@@ -1,7 +1,8 @@
 `timescale 1ns / 1ps
 /*
- sim_top_sdram.v: sim_top.v with the memory of the boards: archie_sdram on sdram_model (clk_mem 80 MHz,
- clk = clk_sys 40 MHz, rising together) and the frame buffer archie_fb (800 x 600 at 60 Hz on clk);
+ sim_top_sdram.v: sim_top.v with the memory of the boards: the RAM in archie_sram on sram_model (bank 0
+ of the wishbone bus), the ROM and the frame buffer in archie_sdram on sdram_model (clk_mem 80 MHz,
+ clk = clk_sys 40 MHz, rising together), the frame buffer archie_fb (800 x 600 at 60 Hz on clk);
  the ROM is put into bank 1 of the model by the harness. run_boot.sh SDRAM=1.
 
  Below: the text of sim_top.v.
@@ -69,7 +70,9 @@ module sim_top_sdram #(
 	output wire fb_vs,
 	output wire fb_de,
 	output wire [31:0] sdr_errors,
-	output wire sdr_ready
+	output wire [31:0] sram_errors,
+	output wire sdr_ready,
+	output wire [7:0] fb_dropped
 );
 
 assign vid_init = archie.MEMC.vid_init;
@@ -82,7 +85,7 @@ assign i2c_sda_s = i2c_din;
 
 assign cpu_pc = {archie.ARM.u_execute.u_register_bank.r15, 2'b00};
 
-// ---------------- memory: archie_sdram on the SDRAM model, the frame buffer
+// ---------------- memory: the RAM in the SRAM, the ROM and the frame buffer in the SDRAM
 wire mem_cyc, mem_stb, mem_we;
 wire [3:0] mem_sel;
 wire [2:0] mem_cti;
@@ -90,6 +93,22 @@ wire [23:2] mem_addr;
 wire [31:0] mem_dout;
 wire [31:0] mem_din;
 wire mem_ack;
+wire ram_sel = mem_addr[23:22] == 2'b00;
+wire [31:0] sram_din, sdram_din;
+wire sram_ack, sdram_ack;
+assign mem_din = ram_sel ? sram_din : sdram_din;
+assign mem_ack = ram_sel ? sram_ack : sdram_ack;
+wire [20:0] sram_ma;
+wire [15:0] sram_md;
+wire [1:0] sram_mwr_n, sram_mrd_n;
+archie_sram sram (
+	.clk(clk), .wb_cyc(mem_cyc & ram_sel), .wb_stb(mem_stb & ram_sel), .wb_we(mem_we), .wb_sel(mem_sel),
+	.wb_adr(mem_addr[21:2]), .wb_dat_i(mem_dout), .wb_dat_o(sram_din), .wb_ack(sram_ack),
+	.MA(sram_ma), .MD(sram_md), .MWR_N(sram_mwr_n), .MRD_N(sram_mrd_n)
+);
+sram_model sram_m (.clk(clk), .ma(sram_ma), .md(sram_md), .mwr_n(sram_mwr_n), .mrd_n(sram_mrd_n),
+	.md_driven(sram.md_oe_n != 16'hFFFF));
+assign sram_errors = sram_m.errors;
 wire fbw_req, fbr_req, fbw_buf, fbr_buf, fbw_busy, fbr_busy, fbr_we;
 wire [11:0] fbw_row, fbr_row;
 wire [10:0] fbw_len, fbr_len, fbw_addr, fbr_addr;
@@ -100,8 +119,8 @@ wire sdr_ras_n, sdr_cas_n, sdr_we_n;
 wire [15:0] sdr_dq;
 archie_sdram #(.INIT_CLOCKS(15'd200)) sdram (
 	.clk(clk_mem), .wb_clk(clk), .reset(1'b0), .ready(sdr_ready),
-	.wb_cyc(mem_cyc), .wb_stb(mem_stb), .wb_we(mem_we), .wb_sel(mem_sel), .wb_adr(mem_addr),
-	.wb_dat_i(mem_dout), .wb_dat_o(mem_din), .wb_ack(mem_ack),
+	.wb_cyc(mem_cyc & ~ram_sel), .wb_stb(mem_stb & ~ram_sel), .wb_we(mem_we), .wb_sel(mem_sel), .wb_adr(mem_addr),
+	.wb_dat_i(mem_dout), .wb_dat_o(sdram_din), .wb_ack(sdram_ack),
 	.fbw_req(fbw_req), .fbw_row(fbw_row), .fbw_len(fbw_len), .fbw_buf(fbw_buf), .fbw_addr(fbw_addr),
 	.fbw_data(fbw_data), .fbw_busy(fbw_busy),
 	.fbr_req(fbr_req), .fbr_row(fbr_row), .fbr_len(fbr_len), .fbr_buf(fbr_buf), .fbr_we(fbr_we),
@@ -122,7 +141,7 @@ archie_fb fb (
 	.fbw_data(fbw_data), .fbw_busy(fbw_busy),
 	.fbr_req(fbr_req), .fbr_row(fbr_row), .fbr_len(fbr_len), .fbr_buf(fbr_buf), .fbr_we(fbr_we),
 	.fbr_addr(fbr_addr), .fbr_data(fbr_data), .fbr_busy(fbr_busy),
-	.rgb(fb_rgb), .hs(fb_hs), .vs(fb_vs), .de(fb_de), .cap_w(), .cap_h(), .dropped()
+	.rgb(fb_rgb), .hs(fb_hs), .vs(fb_vs), .de(fb_de), .cap_w(), .cap_h(), .dropped(fb_dropped)
 );
 
 // ---------------- the machine
