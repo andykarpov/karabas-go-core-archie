@@ -12,6 +12,7 @@ PRJ=$(sed -n 's/^verilog work "\(.*\)"/\1/p' $SRC/archie.prj)
 KG="rtl/karabas/archie_ce.v rtl/karabas/archie_cmos.v rtl/karabas/archie_kbd.v sim/sim_top.v"
 STAMP=build/obj/Vsim_top
 if [ ! -x $STAMP ] || [ -n "$(cd $SRC && find $PRJ $KG sim/sim_archie.cpp sim/run_boot.sh -newer sim/$STAMP 2>/dev/null)" ]; then
+	echo "JOB-STAGE: build"
 	(cd $SRC && verilator -O2 -Wno-fatal -Wno-lint -Wno-style -Wno-BLKANDNBLK -Wno-MULTIDRIVEN \
 		--no-timing --top-module sim_top -Mdir sim/build/obj --cc $PRJ $KG \
 		--exe $PWD/sim/sim_archie.cpp -o Vsim_top > sim/build/verilator.log 2>&1) || { tail -30 build/verilator.log; exit 1; }
@@ -20,6 +21,7 @@ fi
 ROM=${ARCHIE_ROM:-$HOME/Downloads/karabas-sd-archie/archie/riscos.rom}
 HAVE_ROM=
 for a in "$@"; do [ "$a" = "--rom" ] && HAVE_ROM=1; done
+echo "JOB-STAGE: sim"
 # run from src/ so that the $readmem paths (rtl/...) resolve
 cd $SRC
 [ -n "$HAVE_ROM" ] && ROMARG=() || ROMARG=(--rom "$ROM")

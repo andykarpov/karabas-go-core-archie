@@ -1,6 +1,6 @@
 // sim_archie.cpp - verilator harness of sim_top.v: the Archimedes machine of Ф1 on a memory model.
 //
-//   sim_archie --rom FILE [--ms N] [--ppm PREFIX] [--every N] [--kbd] [--i2c] [--i2c-raw] [--pc-hist FROM_MS] [--key MS:CODE[:HOLDMS]] ...
+//   sim_archie --rom FILE [--ms N] [--ppm PREFIX] [--every N] [--kbd] [--i2c] [--i2c-raw] [--pc-hist FROM_MS] [--dump-ram] [--key MS:CODE[:HOLDMS]] ...
 //              [--report MS] [--expect-scan] [--expect-frames N] [--expect-nonblack N]
 //
 // --rom: a 2 MB RISC OS image (or a smaller test ROM), little endian, put at 0x400000 of the model
@@ -37,6 +37,28 @@ static double report_ms = 100;
 static bool i2c_trace = false;
 static bool i2c_raw = false;
 static double hist_from = -1;
+static bool dump_ram = false;
+// exception vectors: entered when r15 jumps into 0x00..0x1c from outside
+static const char *vec_name[8] = { "reset", "undef", "swi", "pabort", "dabort", "addrex", "irq", "firq" };
+static long vec_count[8];
+static uint32_t prev_pc = 0, prev_prev_pc = 0;
+static int vec_print = 0;
+static void vec_step(void) {
+	uint32_t pc = tb->cpu_pc;
+	if (pc == prev_pc) return;
+	if (pc < 0x20 && prev_pc >= 0x20) {
+		int v = pc >> 2;
+		if (v >= 0 && v < 8) {
+			vec_count[v]++;
+			if (v != 2 && v != 6 && vec_print < 40) {
+				printf("%9.3f ms exception %s from pc %07x (%07x)\n", sim_ms, vec_name[v], prev_pc, prev_prev_pc);
+				vec_print++;
+			}
+		}
+	}
+	prev_prev_pc = prev_pc;
+	prev_pc = pc;
+}
 static std::map<uint32_t, long> pc_hist;
 static uint32_t last_pc = 0;
 
@@ -168,6 +190,7 @@ int main(int argc, char **argv) {
 		else if (!strcmp(argv[i], "--kbd")) kbd_trace = true;
 		else if (!strcmp(argv[i], "--i2c")) i2c_trace = true;
 		else if (!strcmp(argv[i], "--i2c-raw")) i2c_raw = true;
+		else if (!strcmp(argv[i], "--dump-ram")) dump_ram = true;
 		else if (!strcmp(argv[i], "--pc-hist") && i + 1 < argc) hist_from = atof(argv[++i]);
 		else if (!strcmp(argv[i], "--report") && i + 1 < argc) report_ms = atof(argv[++i]);
 		else if (!strcmp(argv[i], "--key") && i + 1 < argc) {
@@ -210,6 +233,7 @@ int main(int argc, char **argv) {
 		}
 		tick();
 		i2c_step();
+		vec_step();
 		if (hist_from >= 0 && sim_ms >= hist_from && tb->cpu_pc != last_pc) { pc_hist[tb->cpu_pc]++; last_pc = tb->cpu_pc; }
 		if (kbd_trace) {
 			if (tb->kbd_rx_strobe && !last_rx) printf("%9.3f ms kbd <- %02x\n", sim_ms, tb->kbd_rx_data);
@@ -222,10 +246,24 @@ int main(int argc, char **argv) {
 			last_mouse = tb->kbd_mouse;
 		}
 		if (sim_ms >= next_report) {
-			printf("%9.3f ms (%ld s), pc %07x, cmos writes %d\n", sim_ms, (long)(time(nullptr) - t0), tb->cpu_pc, tb->cmos_changes);
+			printf("%9.3f ms (%ld s), pc %07x, cmos writes %d, exceptions", sim_ms, (long)(time(nullptr) - t0), tb->cpu_pc, tb->cmos_changes);
+			for (int v = 0; v < 8; v++) if (vec_count[v]) printf(" %s %ld", vec_name[v], vec_count[v]);
+			printf("\n");
 			fflush(stdout);
 			next_report += report_ms;
 		}
+	}
+	if (dump_ram) {
+		auto &m = tb->rootp->sim_top->mem;
+		printf("RAM words != 0 per 64 KB (0..4 MB):\n");
+		for (int blk = 0; blk < 64; blk++) {
+			int n = 0;
+			for (int i = 0; i < 16384; i++) if (m[blk * 16384 + i]) n++;
+			printf("%s%06x:%5d", blk % 8 ? "  " : "\n  ", blk << 16, n);
+		}
+		printf("\nMEMC vinit %05x vstart %05x vend %05x\n", tb->vid_init, tb->vid_start, tb->vid_end);
+		FILE *f = fopen("sim/build/ram.bin", "wb");
+		if (f) { for (int i = 0; i < 1048576; i++) { uint32_t w = m[i]; fwrite(&w, 4, 1, f); } fclose(f); }
 	}
 	if (!pc_hist.empty()) {
 		std::vector<std::pair<long, uint32_t>> v;

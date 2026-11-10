@@ -53,8 +53,14 @@ module sim_top #(
 	output wire [25:0] cpu_pc,  // the ARM r15 address (hierarchical, for the trace)
 	output wire i2c_scl,
 	output wire i2c_sda_m,      // driven by the IOC (open drain: 0 pulls low)
-	output wire i2c_sda_s       // driven by the CMOS
+	output wire i2c_sda_s,      // driven by the CMOS
+	output wire [18:0] vid_init, // MEMC video DMA pointers (hierarchical, for the trace)
+	output wire [18:0] vid_start,
+	output wire [18:0] vid_end
 );
+assign vid_init = archie.MEMC.vid_init;
+assign vid_start = archie.MEMC.vid_start;
+assign vid_end = archie.MEMC.vid_end;
 assign i2c_scl = i2c_clock;
 assign i2c_sda_m = i2c_dout;
 assign i2c_sda_s = i2c_din;
