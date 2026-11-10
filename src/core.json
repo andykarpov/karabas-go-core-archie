@@ -5,7 +5,7 @@
     "visible": true,
     "type": "osd",
     "order": 20,
-    "eeprom_bank": 255,
+    "eeprom_bank": 4,
     "rtc_mode": 0,
     "boards": {
         "go": {
@@ -33,6 +33,23 @@
             "type": "T",
             "name": "Reset",
             "hotkey": "Menu+F12"
+        },
+        {
+            "type": "F",
+            "name": "Floppy A",
+            "slot": 0,
+            "extensions": ".adf",
+            "dir": "/archie",
+            "hotkey": "Menu+F1"
+        },
+        {
+            "type": "F",
+            "name": "Floppy B",
+            "slot": 1,
+            "extensions": ".adf",
+            "dir": "/archie",
+            "hotkey": "Menu+F2"
         }
-    ]
+    ],
+    "eeprom_init": "cmos.bin"
 }

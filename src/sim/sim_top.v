@@ -193,9 +193,15 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.AUDIO_R(audio_r)
 );
 
+wire [7:0] rtc_a, rtc_di, rtc_do;
+wire rtc_cs, rtc_wr_n;
 archie_cmos u_cmos (
-	.clk(clk), .reset(reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din), .changes(cmos_changes)
+	.clk(clk), .reset(reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din),
+	.rtc_a(rtc_a), .rtc_di(rtc_di), .rtc_do(rtc_do), .rtc_cs(rtc_cs), .rtc_wr_n(rtc_wr_n),
+	.changes(cmos_changes)
 );
+// the RTC registers of kg_mcu
+rtc_model u_rtc (.clk(clk), .rtc_a(rtc_a), .rtc_di(rtc_di), .rtc_do(rtc_do), .rtc_cs(rtc_cs), .rtc_wr_n(rtc_wr_n));
 
 archie_kbd #(.CLK_HZ(40000000)) u_kbd (
 	.clk(clk),

@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 SRC=..
 mkdir -p build
 PRJ=$(sed -n 's/^verilog work "\(.*\)"/\1/p' $SRC/archie.prj)
-KG="rtl/karabas/archie_ce.v rtl/karabas/archie_cmos.v rtl/karabas/archie_kbd.v"
+KG="rtl/karabas/archie_ce.v rtl/karabas/archie_cmos.v rtl/karabas/archie_kbd.v sim/rtc_model.v"
 # SDRAM=1: the memory of the boards (sim_top_sdram.v: archie_sdram, sdram_model, archie_fb), else sim_top.v
 if [ -n "$SDRAM" ]; then
 	TOP=sim_top_sdram; OBJ=obj_sdram; DEFS=-DSIM_SDRAM
