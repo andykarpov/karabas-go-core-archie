@@ -1,23 +1,38 @@
 {
     "id": "archie",
     "name": "Acorn Archimedes",
-    "build": "26111000",
+    "build": "26111001",
     "visible": true,
     "type": "osd",
     "order": 20,
     "eeprom_bank": 255,
-    "rtc_mode": 3,
+    "rtc_mode": 0,
     "boards": {
-        "go": {"bitstream": "karabas_go.bin"},
-        "mini": {"bitstream": "karabas_mini.bin"},
-        "minig": {"bitstream": "karabas_minig.bin"}
+        "go": {
+            "bitstream": "karabas_go.bin"
+        },
+        "mini": {
+            "bitstream": "karabas_mini.bin"
+        },
+        "minig": {
+            "bitstream": "karabas_minig.bin"
+        }
     },
     "osd": [
-    {"type": "F", "name": "Floppy 0", "slot": 0, "extensions": ".adf", "dir": "/archie", "hotkey": "Menu+F1"},
-    {"type": "F", "name": "Floppy 1", "slot": 1, "extensions": ".adf", "dir": "/archie", "hotkey": "Menu+F2"},
-    {"type": "F", "name": "HDD 0", "slot": 2, "extensions": ".hdf", "dir": "/archie", "hotkey": "Menu+F3"},
-    {"type": "F", "name": "HDD 1", "slot": 3, "extensions": ".hdf", "dir": "/archie", "hotkey": "Menu+F4"},
-    {"type": "FL", "name": "RISC OS", "slot": 7, "extensions": ".rom", "dir": "/archie", "filename": "riscos.rom", "autoload": 1, "hotkey": "Menu+R"},
-    {"type": "T", "name": "Reset", "hotkey": "F12"}
+        {
+            "type": "FL",
+            "name": "RISC OS",
+            "slot": 7,
+            "extensions": ".rom",
+            "dir": "/archie",
+            "filename": "riscos.rom",
+            "autoload": 1,
+            "hotkey": "Menu+R"
+        },
+        {
+            "type": "T",
+            "name": "Reset",
+            "hotkey": "Menu+F12"
+        }
     ]
 }

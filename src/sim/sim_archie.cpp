@@ -4,7 +4,7 @@
 //              [--report MS] [--expect-scan] [--expect-frames N] [--expect-nonblack N]
 //
 // --rom: a 2 MB RISC OS image (or a smaller test ROM), little endian, put at 0x400000 of the model
-// (where MEMC maps the ROM). --ms: the run length in ms of machine time (42 MHz clock).
+// (where MEMC maps the ROM). --ms: the run length in ms of machine time (40 MHz clock).
 // --ppm writes every N-th frame (default 25) as PREFIX_NNNN.ppm: the pixels inside VIDEO_EN of the
 // VIDC raster, one per pixel enable. --kbd prints the bytes of the keyboard link. --key presses the
 // Archimedes key CODE (hex, row << 4 | column) at MS for HOLDMS (default 100). --expect-scan: fail
@@ -20,14 +20,24 @@
 #include <ctime>
 #include <map>
 #include <algorithm>
+#include "verilated.h"
+#ifdef SIM_SDRAM
+// the memory of the boards (sim_top_sdram.v): archie_sdram + sdram_model + archie_fb
+#include "Vsim_top_sdram.h"
+#include "Vsim_top_sdram___024root.h"
+#include "Vsim_top_sdram_sim_top_sdram.h"
+#include "Vsim_top_sdram_sdram_model.h"
+typedef Vsim_top_sdram Vtop;
+#else
 #include "Vsim_top.h"
 #include "Vsim_top___024root.h"
 #include "Vsim_top_sim_top.h"
-#include "verilated.h"
+typedef Vsim_top Vtop;
+#endif
 
-static Vsim_top *tb;
+static Vtop *tb;
 static double sim_ms = 0;
-static const double TICK_MS = 1000.0 / 42000000.0;
+static const double TICK_MS = 1000.0 / 40000000.0;
 
 static const char *ppm_prefix = nullptr;
 static int ppm_every = 25;
@@ -38,6 +48,7 @@ static bool i2c_trace = false;
 static bool i2c_raw = false;
 static double hist_from = -1;
 static bool dump_ram = false;
+static bool sdram_bad = false;
 static long wr_region[256];  // writes per 64 KB of the 16 MB space since the last report
 // exception vectors: entered when r15 jumps into 0x00..0x1c from outside
 static const char *vec_name[8] = { "reset", "undef", "swi", "pabort", "dabort", "addrex", "irq", "firq" };
@@ -148,11 +159,53 @@ static void capture(void) {
 	fx++;
 }
 
+#ifdef SIM_SDRAM
+// the 800 x 600 output of the frame buffer
+static std::vector<uint32_t> fbimg(800 * 600);
+static int fbx = 0, fby = -1, fb_last_vs = 0, fb_last_hs = 0, fb_line_de = 0, fb_frames = 0;
+static void fb_capture(void) {
+	if (tb->fb_vs && !fb_last_vs) {
+		if (ppm_prefix && fby > 0 && (fb_frames % ppm_every) == 0) {
+			char name[512];
+			snprintf(name, sizeof name, "%s_fb_%04d.ppm", ppm_prefix, fb_frames);
+			FILE *f = fopen(name, "wb");
+			if (f) {
+				fprintf(f, "P6\n800 600\n255\n");
+				for (int i = 0; i < 800 * 600; i++) { uint8_t p[3] = { (uint8_t)(fbimg[i] >> 16), (uint8_t)(fbimg[i] >> 8), (uint8_t)fbimg[i] }; fwrite(p, 3, 1, f); }
+				fclose(f);
+				printf("%9.3f ms output frame %d -> %s\n", sim_ms, fb_frames, name);
+			}
+		}
+		fb_frames++;
+		fby = -1;
+	}
+	if (tb->fb_hs && !fb_last_hs) { if (fb_line_de) fby++; fb_line_de = 0; fbx = 0; }
+	if (tb->fb_de) {
+		if (fby < 0) fby = 0;
+		if (fbx < 800 && fby < 600) fbimg[fby * 800 + fbx] = tb->fb_rgb;
+		fbx++;
+		fb_line_de = 1;
+	}
+	fb_last_vs = tb->fb_vs;
+	fb_last_hs = tb->fb_hs;
+}
+#endif
+
 static void tick(void) {
+#ifdef SIM_SDRAM
+	// clk_mem twice per clk, rising together
+	tb->clk = 1; tb->clk_mem = 1; tb->eval();
+	tb->clk_mem = 0; tb->eval();
+	tb->clk = 0; tb->clk_mem = 1; tb->eval();
+	tb->clk_mem = 0; tb->eval();
+	tb->clk = 1; tb->clk_mem = 1; tb->eval();
+	fb_capture();
+#else
 	tb->clk = 0;
 	tb->eval();
 	tb->clk = 1;
 	tb->eval();
+#endif
 	sim_ms += TICK_MS;
 
 	capture();
@@ -168,16 +221,27 @@ static bool load_rom(const char *name) {
 	std::vector<uint8_t> d(4 << 20);
 	size_t n = fread(d.data(), 1, d.size(), f);
 	fclose(f);
+#ifdef SIM_SDRAM
+	// bank wb_adr[23:22], row wb_adr[21:10], column { wb_adr[9:2], half } (archie_sdram)
+	auto &m = tb->rootp->sim_top_sdram->model->mem;
+	for (size_t i = 0; i < (n + 3) / 4; i++) {
+		uint32_t w = 0x100000 + i;
+		uint32_t base = ((w >> 20) & 3) << 22 | ((w >> 8) & 0xfff) << 9 | (w & 0xff) << 1;
+		m[base] = d[4 * i] | (d[4 * i + 1] << 8);
+		m[base + 1] = d[4 * i + 2] | (d[4 * i + 3] << 8);
+	}
+#else
 	auto &m = tb->rootp->sim_top->mem;
 	for (size_t i = 0; i < (n + 3) / 4; i++)
 		m[0x100000 + i] = d[4 * i] | (d[4 * i + 1] << 8) | (d[4 * i + 2] << 16) | ((uint32_t)d[4 * i + 3] << 24);
+#endif
 	printf("ROM %s: %zu bytes at 0x400000\n", name, n);
 	return true;
 }
 
 int main(int argc, char **argv) {
 	Verilated::commandArgs(argc, argv);
-	tb = new Vsim_top;
+	tb = new Vtop;
 	const char *rom = nullptr;
 	double run_ms = 100;
 	bool expect_scan = false;
@@ -258,6 +322,7 @@ int main(int argc, char **argv) {
 			next_report += report_ms;
 		}
 	}
+#ifndef SIM_SDRAM
 	if (dump_ram) {
 		auto &m = tb->rootp->sim_top->mem;
 		printf("RAM words != 0 per 64 KB (0..4 MB):\n");
@@ -270,6 +335,11 @@ int main(int argc, char **argv) {
 		FILE *f = fopen("sim/build/ram.bin", "wb");
 		if (f) { for (int i = 0; i < 1048576; i++) { uint32_t w = m[i]; fwrite(&w, 4, 1, f); } fclose(f); }
 	}
+#endif
+#ifdef SIM_SDRAM
+	printf("SDRAM model: %d timing errors\n", tb->sdr_errors);
+	if (tb->sdr_errors) sdram_bad = true;
+#endif
 	if (!pc_hist.empty()) {
 		std::vector<std::pair<long, uint32_t>> v;
 		for (auto &e : pc_hist) v.push_back({e.second, e.first});
@@ -277,7 +347,7 @@ int main(int argc, char **argv) {
 		printf("pc histogram from %.3f ms (%zu addresses):\n", hist_from, v.size());
 		for (size_t i = 0; i < v.size() && i < 40; i++) printf("  %07x %ld\n", v[i].second, v[i].first);
 	}
-	int rc = 0;
+	int rc = sdram_bad ? 1 : 0;
 	if (expect_scan && !last_scan) { printf("FAIL: key scan not enabled\n"); rc = 1; }
 	if (expect_frames >= 0 && frames < expect_frames) { printf("FAIL: %d frames < %d\n", frames, expect_frames); rc = 1; }
 	if (expect_nonblack >= 0 && last_nonblack < expect_nonblack) {

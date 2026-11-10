@@ -290,7 +290,11 @@ wire floppy_drq;
 
 wire ioc_clk7m_en;
 
-ioc IOC(
+// karabas: the IOC dividers and the FDC clock from CLKCPU (40 MHz on the boards, 42 in MiSTer)
+localparam IOC_CLK2_DIV = CLKCPU / 2000000;
+localparam IOC_CLK7_DIV = (CLKCPU == 40000000) ? 5 : 6;
+localparam [15:0] FDC_CLK_KHZ = CLKCPU / IOC_CLK7_DIV / 1000;
+ioc #(.CLK2_DIV(IOC_CLK2_DIV), .CLK7_DIV(IOC_CLK7_DIV)) IOC(
 
 	.clkcpu        ( CLKCPU_I           ),
 	.clk7m_en      ( ioc_clk7m_en       ),
@@ -370,7 +374,7 @@ wire        floppy_density;
 wire        floppy_reset;
 
 wire        fdc_sel = cpu_stb & cpu_cyc & floppy_en;
-fdc1772 #(.EXT_MOTOR(1'b1), .CLK_EN(16'd7000)) FDC1772
+fdc1772 #(.EXT_MOTOR(1'b1), .CLK_EN(FDC_CLK_KHZ)) FDC1772 // karabas: CLK_EN from CLKCPU (7000 upstream)
 (
 	.clkcpu         ( CLKCPU_I         ),
 	.clk8m_en       ( ioc_clk7m_en     ),

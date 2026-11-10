@@ -24,6 +24,8 @@ module ioc (
 	kbd_in_data,
 	kbd_in_strobe
 );
+	parameter CLK2_DIV = 21;
+	parameter CLK7_DIV = 6;
 	input clkcpu;
 	output reg clk2m_en;
 	output reg clk7m_en;
@@ -176,11 +178,11 @@ module ioc (
 			if (!txdone && timer[3].reload)
 				txcount <= txcount - 4'd1;
 			clk2en_counter <= clk2en_counter + 1'd1;
-			if (clk2en_counter == 20)
+			if (clk2en_counter == (CLK2_DIV - 1))
 				clk2en_counter <= 0;
 			clk2m_en <= !clk2en_counter;
 			clk7en_counter <= clk7en_counter + 1'd1;
-			if (clk7en_counter == 5)
+			if (clk7en_counter == (CLK7_DIV - 1))
 				clk7en_counter <= 0;
 			clk7m_en <= !clk7en_counter;
 			if (write_request & ctrl_selected)

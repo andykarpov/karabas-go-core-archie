@@ -2,7 +2,7 @@
 /*
  sim_top.v: the machine of Ф1 for Verilator (run_boot.sh).
 
- archimedes_top (rtl/sv2v, what XST builds) on one clock (42 MHz: CPU, VIDC, audio), with the
+ archimedes_top (rtl/sv2v, what XST builds) on one clock (40 MHz as the boards: CPU, VIDC, audio), with the
  karabas parts of the board tops: archie_ce (VIDC enables), archie_cmos, archie_kbd. The memory is a
  behavioural model of the wishbone side of the Archie_MiSTer sdram.v: 16 MB of 32-bit words (RAM at
  0, the RISC OS ROM at 0x400000, written by the C++ harness), a read answers four words on four
@@ -125,11 +125,11 @@ wire hires_mono;
 wire [7:0] kbd_out_data, kbd_in_data;
 wire kbd_out_strobe, kbd_in_strobe;
 
-archie_ce #(.CLK_HZ(42000000)) u_ce (
+archie_ce #(.CLK_HZ(40000000)) u_ce (
 	.clk(clk), .reset(reset), .baseclk(baseclk), .selpix(selpix), .ce_pix(ce_pix), .ce_aud(ce_aud)
 );
 
-archimedes_top #(.CLKCPU(42000000)) archie (
+archimedes_top #(.CLKCPU(40000000)) archie (
 	.CLKCPU_I(clk),
 	.CLKPIX_I(clk),
 	.CEPIX_I(ce_pix),
@@ -197,7 +197,7 @@ archie_cmos u_cmos (
 	.clk(clk), .reset(reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din), .changes(cmos_changes)
 );
 
-archie_kbd #(.CLK_HZ(42000000)) u_kbd (
+archie_kbd #(.CLK_HZ(40000000)) u_kbd (
 	.clk(clk),
 	.reset(reset),
 	.kbd_out_data(kbd_out_data),

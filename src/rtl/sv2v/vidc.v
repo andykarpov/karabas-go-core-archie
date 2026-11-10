@@ -129,7 +129,7 @@ module vidc (
 		.o_cursor_phase(cursor_phase),
 		.o_cursor_fetch(cursor_fetch_enabled)
 	);
-	vidc_dmachannel VIDEODMA(
+	vidc_dmachannel #(.FIFO_SIZE(4)) VIDEODMA(
 		.rst_cpu((flybk_sys | rst_i) | rst_vid_cpu_i),
 		.rst_dev(flybk | rst_vid_i),
 		.clkcpu(clkcpu),
