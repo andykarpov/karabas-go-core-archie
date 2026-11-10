@@ -38,6 +38,7 @@ static bool i2c_trace = false;
 static bool i2c_raw = false;
 static double hist_from = -1;
 static bool dump_ram = false;
+static long wr_region[256];  // writes per 64 KB of the 16 MB space since the last report
 // exception vectors: entered when r15 jumps into 0x00..0x1c from outside
 static const char *vec_name[8] = { "reset", "undef", "swi", "pabort", "dabort", "addrex", "irq", "firq" };
 static long vec_count[8];
@@ -234,6 +235,7 @@ int main(int argc, char **argv) {
 		tick();
 		i2c_step();
 		vec_step();
+		if (tb->wr_strobe) wr_region[(tb->wr_addr >> 14) & 255]++;
 		if (hist_from >= 0 && sim_ms >= hist_from && tb->cpu_pc != last_pc) { pc_hist[tb->cpu_pc]++; last_pc = tb->cpu_pc; }
 		if (kbd_trace) {
 			if (tb->kbd_rx_strobe && !last_rx) printf("%9.3f ms kbd <- %02x\n", sim_ms, tb->kbd_rx_data);
@@ -248,7 +250,10 @@ int main(int argc, char **argv) {
 		if (sim_ms >= next_report) {
 			printf("%9.3f ms (%ld s), pc %07x, cmos writes %d, exceptions", sim_ms, (long)(time(nullptr) - t0), tb->cpu_pc, tb->cmos_changes);
 			for (int v = 0; v < 8; v++) if (vec_count[v]) printf(" %s %ld", vec_name[v], vec_count[v]);
+			printf("\n           writes per 64 KB:");
+			for (int r = 0; r < 256; r++) if (wr_region[r]) printf(" %06x:%ld", r << 16, wr_region[r]);
 			printf("\n");
+			memset(wr_region, 0, sizeof wr_region);
 			fflush(stdout);
 			next_report += report_ms;
 		}

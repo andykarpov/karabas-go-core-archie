@@ -56,8 +56,12 @@ module sim_top #(
 	output wire i2c_sda_s,      // driven by the CMOS
 	output wire [18:0] vid_init, // MEMC video DMA pointers (hierarchical, for the trace)
 	output wire [18:0] vid_start,
-	output wire [18:0] vid_end
+	output wire [18:0] vid_end,
+	output wire wr_strobe,       // a memory write (the ack of the model)
+	output wire [21:0] wr_addr   // its word address
 );
+assign wr_strobe = mem_ack & mem_we;
+assign wr_addr = line;
 assign vid_init = archie.MEMC.vid_init;
 assign vid_start = archie.MEMC.vid_start;
 assign vid_end = archie.MEMC.vid_end;
