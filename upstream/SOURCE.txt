@@ -1,0 +1,5 @@
+https://github.com/MiSTer-devel/Archie_MiSTer
+commit f12623a9f2dbb080fdf5f0302ad715b375633c92 2026-10-21
+
+src/rtl/: rtl/ of that commit without the Quartus parts (pll/, pll*.v, video_pll*.v, hps_ext.v, *.qip).
+upstream/: the MiSTer top (Archie.sv) and its ReadMe, a reference for the wiring, not built.
