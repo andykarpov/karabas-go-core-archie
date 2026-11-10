@@ -55,7 +55,7 @@
 
 Ветка и один PR на фазу, слияние в конце фазы.
 
-- **Ф0. Импорт и fit.** `upstream/` без правок, `sv2v.sh`, правки XST, Makefile, `core.json`, `make archie-xst`. Готово, когда XST собирает машину без защёлок и с ≥ 42 МГц.
+- **Ф0. Импорт и fit — готово (2026-11-10, ветка `f0-import`).** rtl Archie_MiSTer без правок (92bd8e5), `src/tools/sv2v.sh` → `src/rtl/sv2v/`, правки XST (список выше), Makefile, `core.json`. `make archie-xst`: 8946 LUT (59 %), 5382 FF, 16 RAMB16, защёлок нет, 53,1 МГц. `sdram.v` MiSTer не в sv2v (XST: `inout` как reg) — переделка в Ф2.
 - **Ф1. Симуляция.** Verilator: машина + модель SDRAM; тестовые ПЗУ на vasm (из `sw/` MiST) без RISC OS — CPU, MEMC, VIDC-кадр в PNG, IOC; с RISC OS пользователя (локально) — до рабочего стола; протокол клавиатуры.
 - **Ф2. Mini G.** PLL (42 / 126 МГц), SDRAM, DCM_CLKGEN для VIDC, кадровый буфер в SRAM, вывод 800 × 600, HDMI со звуком, HID, OSD, ROM через `FL`. Первый запуск на плате: RISC OS, клавиатура, мышь.
 - **Ф3. Дискеты и CMOS.** ADF A: / B:, запись, смена диска; CMOS в `.eep`, время с RTC.
@@ -67,3 +67,4 @@
 - Режим вывода: 800 × 600 @ 60 или 50 Гц (проверить на мониторе пользователя).
 - Частота SDRAM 126 МГц на Spartan-6 -2 — проверка в Ф2.
 - Где взять RISC OS 3.11 (ROOL / riscos.com, «ROMs for emulators»).
+- Задержка чтения памяти кэша a23: altsyncram MiSTer с `outdata_reg_a = CLOCK0`, модель стенда MiST (и наша) — один такт. Проверить в Ф1.

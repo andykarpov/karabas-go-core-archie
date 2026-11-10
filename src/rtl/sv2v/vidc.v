@@ -1,0 +1,337 @@
+module vidc (
+	clkcpu,
+	clkpix,
+	cepix,
+	cevid,
+	selpix,
+	hires_mono,
+	baseclk,
+	clkaud,
+	rst_i,
+	rst_vid_i,
+	rst_vid_cpu_i,
+	rst_cmd_i,
+	vidw,
+	cpu_dat,
+	viddat,
+	vidak,
+	vidrq,
+	curak,
+	currq,
+	sndak,
+	sndrq,
+	flybk_sys,
+	flybk,
+	hsync,
+	vsync,
+	video_r,
+	video_g,
+	video_b,
+	video_en,
+	ceaud,
+	audio_l,
+	audio_r,
+	audio_sync
+);
+	parameter CLKCPU = 42000000;
+	input clkcpu;
+	input clkpix;
+	input cepix;
+	input cevid;
+	output wire [1:0] selpix;
+	output wire hires_mono;
+	input [1:0] baseclk;
+	input clkaud;
+	input rst_i;
+	input rst_vid_i;
+	input rst_vid_cpu_i;
+	input rst_cmd_i;
+	input vidw;
+	input [31:0] cpu_dat;
+	input [31:0] viddat;
+	input vidak;
+	output wire vidrq;
+	input curak;
+	output wire currq;
+	input sndak;
+	output wire sndrq;
+	input flybk_sys;
+	output wire flybk;
+	output wire hsync;
+	output wire vsync;
+	output reg [3:0] video_r;
+	output reg [3:0] video_g;
+	output reg [3:0] video_b;
+	output wire video_en;
+	input ceaud;
+	output wire [15:0] audio_l;
+	output wire [15:0] audio_r;
+	output reg audio_sync;
+	wire cur_enabled;
+	reg cur_enabled_r;
+	wire enabled;
+	wire border;
+	wire [1:0] cursor_phase;
+	wire cursor_fetch_enabled;
+	reg [12:0] vidc_palette [0:15];
+	reg [15:0] vidc_cr;
+	reg [12:0] vidc_border;
+	reg [12:0] cur_palette [1:3];
+	wire [7:0] snd_sam_data;
+	wire snd_sam_en;
+	reg enabled_d1;
+	reg enabled_d2;
+	reg pix_load;
+	wire pix_ack;
+	wire [7:0] pix_data;
+	reg [2:0] pix_shift_count;
+	reg [7:0] pix_data_latch = 8'd0;
+	reg csr_load;
+	wire csr_ack;
+	reg [3:0] csr_load_count;
+	wire [7:0] csr_data;
+	reg [2:0] csr_shift_count;
+	reg [7:0] csr_data_latch = 8'd0;
+	reg [3:0] hires_cursor_req_count = 0;
+	reg [3:0] hires_cursor_load_count = 0;
+	reg [63:0] hires_cursor_row = 0;
+	reg hires_cursor_row_valid = 0;
+	wire vid_wr;
+	wire [31:0] vid_cpu_dat;
+	vidc_command_fifo VIDEO_COMMANDS(
+		.wr_clk(clkcpu),
+		.wr_rst(rst_i),
+		.wr_en(vidw),
+		.wr_data(cpu_dat),
+		.rd_clk(clkpix),
+		.rd_rst(rst_cmd_i),
+		.rd_valid(vid_wr),
+		.rd_data(vid_cpu_dat)
+	);
+	assign selpix = vidc_cr[1:0];
+	wire hires_geometry;
+	assign hires_mono = (((baseclk == 2'd0) && (vidc_cr[3:2] == 2'b10)) && (vidc_cr[1:0] == 2'b11)) && hires_geometry;
+	vidc_timing TIMING(
+		.clkcpu(clkpix),
+		.wr(vid_wr),
+		.cpu_dat(vid_cpu_dat),
+		.clkvid(clkpix),
+		.cevid(cevid),
+		.rst(rst_vid_i),
+		.pixel_depth(vidc_cr[3:2]),
+		.o_hsync(hsync),
+		.o_vsync(vsync),
+		.o_flyback(flybk),
+		.o_enabled(enabled),
+		.o_cursor(cur_enabled),
+		.o_border(border),
+		.o_hires_geometry(hires_geometry),
+		.o_cursor_phase(cursor_phase),
+		.o_cursor_fetch(cursor_fetch_enabled)
+	);
+	vidc_dmachannel VIDEODMA(
+		.rst_cpu((flybk_sys | rst_i) | rst_vid_cpu_i),
+		.rst_dev(flybk | rst_vid_i),
+		.clkcpu(clkcpu),
+		.clkdev(clkpix),
+		.cedev(cevid),
+		.cpu_data(viddat),
+		.ak(vidak),
+		.rq(vidrq),
+		.stall(1'b0),
+		.dev_data(pix_data),
+		.dev_ak(pix_ack)
+	);
+	vidc_dmachannel #(.FIFO_SIZE(2)) CURSORDMA(
+		.rst_cpu((flybk_sys | rst_i) | rst_vid_cpu_i),
+		.rst_dev(flybk | rst_vid_i),
+		.clkcpu(clkcpu),
+		.clkdev(clkpix),
+		.cedev(cevid),
+		.cpu_data(viddat),
+		.ak(curak),
+		.rq(currq),
+		.stall(1'b0),
+		.dev_data(csr_data),
+		.dev_ak(csr_ack)
+	);
+	always @(posedge clkcpu) begin : block
+		reg old_en;
+		old_en <= snd_sam_en;
+		audio_sync <= ~old_en & snd_sam_en;
+	end
+	vidc_dmachannel SOUNDDMA(
+		.rst_cpu(rst_i),
+		.rst_dev(rst_i),
+		.clkcpu(clkcpu),
+		.clkdev(clkaud),
+		.cedev(ceaud),
+		.cpu_data(viddat),
+		.ak(sndak),
+		.rq(sndrq),
+		.dev_data(snd_sam_data),
+		.dev_ak(snd_sam_en)
+	);
+	vidc_audio AUDIOMIXER(
+		.cpu_clk(clkcpu),
+		.cpu_wr(vidw),
+		.cpu_data(cpu_dat),
+		.aud_clk(clkaud),
+		.aud_ce(ceaud),
+		.aud_rst(rst_i),
+		.aud_data(snd_sam_data),
+		.aud_en(snd_sam_en),
+		.aud_right(audio_r),
+		.aud_left(audio_l)
+	);
+	integer c;
+	initial begin
+		for (c = 0; c < 16; c = c + 1)
+			vidc_palette[c] = 13'd0;
+		vidc_cr = 16'hfff0;
+		pix_shift_count = 3'd0;
+		pix_data_latch = 8'd0;
+		pix_load = 1'b0;
+		csr_shift_count = 3'd0;
+		csr_data_latch = 8'd0;
+		csr_load_count = 'd0;
+		csr_load = 1'b0;
+	end
+	localparam VIDEO_PALETTE = 6'b00xxxx;
+	localparam VIDEO_CONTROL = 6'b111000;
+	localparam VIDEO_BORDER = 6'b010000;
+	localparam CURSOR_PALETTE = 6'b0100xx;
+	always @(posedge clkpix)
+		if (vid_wr == 1'b1)
+			casex (vid_cpu_dat[31:26])
+				VIDEO_PALETTE: vidc_palette[vid_cpu_dat[29:26]] <= vid_cpu_dat[12:0];
+				CURSOR_PALETTE:
+					if (vid_cpu_dat[27:26] == 2'b00)
+						vidc_border <= vid_cpu_dat[12:0];
+					else
+						cur_palette[vid_cpu_dat[27:26]] <= vid_cpu_dat[12:0];
+				VIDEO_CONTROL: vidc_cr <= vid_cpu_dat[15:0];
+			endcase
+	always @(posedge clkpix)
+		if (cevid) begin
+			cur_enabled_r <= cur_enabled;
+			pix_load <= pix_ack;
+			csr_load <= csr_ack;
+			if (!hires_mono || !cursor_fetch_enabled) begin
+				hires_cursor_req_count <= 0;
+				hires_cursor_load_count <= 0;
+				hires_cursor_row_valid <= 0;
+			end
+			else begin
+				if (csr_ack && (hires_cursor_req_count < 8))
+					hires_cursor_req_count <= hires_cursor_req_count + 1'd1;
+				if (csr_load && (hires_cursor_load_count < 8)) begin
+					hires_cursor_row[hires_cursor_load_count * 8+:8] <= csr_data;
+					hires_cursor_load_count <= hires_cursor_load_count + 1'd1;
+					if (hires_cursor_load_count == 7)
+						hires_cursor_row_valid <= 1;
+				end
+			end
+			enabled_d1 <= enabled;
+			enabled_d2 <= enabled_d1;
+			if (flybk == 1'b1)
+				pix_data_latch <= 8'd0;
+			if (hsync == 1'b0) begin
+				pix_shift_count <= 3'b111;
+				csr_shift_count <= 3'b111;
+				csr_load_count <= 'd0;
+			end
+			else if (enabled == 1'b1)
+				case ({vidc_cr[3:2]})
+					2'b00: begin
+						pix_data_latch <= {1'b0, pix_data_latch[7:1]};
+						pix_shift_count <= pix_shift_count + 3'd1;
+					end
+					2'b01: begin
+						pix_data_latch <= {2'b00, pix_data_latch[7:2]};
+						pix_shift_count <= pix_shift_count + 3'd2;
+					end
+					2'b10: begin
+						pix_data_latch <= {4'b0000, pix_data_latch[7:4]};
+						pix_shift_count <= pix_shift_count + 3'd4;
+					end
+					default: pix_data_latch <= 8'd0;
+				endcase
+			if (cur_enabled_r) begin
+				csr_data_latch <= {2'b00, csr_data_latch[7:2]};
+				csr_shift_count <= csr_shift_count + 3'd2;
+			end
+			if (pix_load == 1'b1)
+				pix_data_latch <= pix_data;
+			if (csr_load) begin
+				csr_load_count <= csr_load_count + 1'd1;
+				csr_data_latch <= csr_data;
+			end
+		end
+	assign pix_ack = (hsync & enabled) & ((((pix_shift_count[2] & vidc_cr[3]) | (vidc_cr[2] & vidc_cr[3])) | ((pix_shift_count[0] & pix_shift_count[1]) & pix_shift_count[2])) | ((pix_shift_count[1] & pix_shift_count[2]) & vidc_cr[2]));
+	assign csr_ack = (hires_mono ? cursor_fetch_enabled && (hires_cursor_req_count < 8) : ((cur_enabled & (csr_shift_count[2] & csr_shift_count[0])) & ~csr_load) & ~csr_load_count[3]);
+	wire [3:0] pix_lookup = (vidc_cr[3:2] == 2'b00 ? {3'd0, pix_data_latch[0]} : (vidc_cr[3:2] == 2'b01 ? {2'd0, pix_data_latch[1:0]} : pix_data_latch[3:0]));
+	wire [1:0] csr_lookup = csr_data_latch[1:0];
+	wire [1:0] hires_csr_lookup;
+	wire hires_cursor_opaque;
+	mode23_cursor_serializer HIRES_CURSOR_SERIALIZER(
+		.clk(clkpix),
+		.rst(rst_vid_i),
+		.ce(cepix),
+		.enable(cur_enabled),
+		.phase(cursor_phase),
+		.row_valid(hires_cursor_row_valid),
+		.row_data(hires_cursor_row),
+		.lookup(hires_csr_lookup),
+		.opaque(hires_cursor_opaque)
+	);
+	reg [1:0] mono_phase = 0;
+	always @(posedge clkpix)
+		if (!hsync)
+			mono_phase <= 0;
+		else if (cepix && hires_mono)
+			mono_phase <= mono_phase + 1'd1;
+		else if (!hires_mono)
+			mono_phase <= 0;
+	reg [2:0] hires_de_pipe = 3'd0;
+	always @(posedge clkpix)
+		if (rst_vid_i)
+			hires_de_pipe <= 3'd0;
+		else if (cepix)
+			hires_de_pipe <= {hires_de_pipe[1:0], enabled_d2};
+	wire [1:0] cursor_lookup = (hires_mono ? hires_csr_lookup : csr_lookup);
+	wire cursor_opaque = (hires_mono ? hires_cursor_opaque : cur_enabled & (csr_lookup != 2'd0));
+	wire mono_dot = (cursor_opaque ? cur_palette[cursor_lookup][5] : (enabled_d2 ? vidc_palette[pix_data_latch[3:0]][mono_phase] : (border ? vidc_border[mono_phase] : 1'b0)));
+	wire [12:0] vidc_colour = (cursor_opaque ? cur_palette[cursor_lookup] : (enabled_d2 ? vidc_palette[pix_lookup] : (border ? vidc_border : 13'd0)));
+	wire hicolour = ((vidc_cr[3:2] == 2'b11) & enabled_d2) & !cursor_opaque;
+	assign video_en = (hires_mono ? hires_de_pipe[2] : border);
+	always @(posedge clkpix) begin : sv2v_autoblock_1
+		reg [3:0] r1;
+		reg [3:0] g1;
+		reg [3:0] b1;
+		reg [3:0] r2;
+		reg [3:0] g2;
+		reg [3:0] b2;
+		if (cepix) begin
+			if (hires_mono) begin
+				r1 <= {4 {mono_dot}};
+				g1 <= {4 {mono_dot}};
+				b1 <= {4 {mono_dot}};
+			end
+			else begin
+				r1[3] <= (hicolour ? pix_data_latch[4] : vidc_colour[3]);
+				r1[2:0] <= vidc_colour[2:0];
+				g1[3:2] <= (hicolour ? pix_data_latch[6:5] : vidc_colour[7:6]);
+				g1[1:0] <= vidc_colour[5:4];
+				b1[3] <= (hicolour ? pix_data_latch[7] : vidc_colour[11]);
+				b1[2:0] <= vidc_colour[10:8];
+			end
+			r2 <= r1;
+			g2 <= g1;
+			b2 <= b1;
+			video_r <= r2;
+			video_g <= g2;
+			video_b <= b2;
+		end
+	end
+endmodule
