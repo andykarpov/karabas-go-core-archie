@@ -165,9 +165,9 @@ always @(posedge clkcpu) begin : block
 		vid_address <= INITIAL_SCREEN_BASE;
 		cur_address <= INITIAL_CURSOR_BASE;
 
-		vid_load = 1'b0;
-		snd_load = 1'b0;
-		cur_load = 1'b0;
+		vid_load <= 1'b0; // karabas: non-blocking (XST: mixed assignments)
+		snd_load <= 1'b0; // karabas: non-blocking (XST: mixed assignments)
+		cur_load <= 1'b0; // karabas: non-blocking (XST: mixed assignments)
 		cpu_load 	<= 1'b0;
 		rom_overlay	<= 1'b1; // start with rom overlay 
 	
@@ -182,7 +182,7 @@ always @(posedge clkcpu) begin : block
 
 		snd_next_valid <= 1'b0;  // sound init.
 
-		dma_ack_r = 4'd0; // video init.
+		dma_ack_r <= 4'd0; // video init. karabas: non-blocking (XST: mixed assignments)
 
 	end else begin 
 		flybk_d <= flybk;

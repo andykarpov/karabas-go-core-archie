@@ -279,7 +279,7 @@ always @(posedge clk) n_data_r <= {n_data_r[0], n_data};
 wire [31:0] buf_readdata;
 wire [31:0] buf_q;
 
-dpram #(12,16) io_buf0
+dpram #(.DATAWIDTH(16), .ADDRWIDTH(12)) io_buf0 // karabas: dpram of karabas-go-modules (parameters by name)
 (
 	.clock(clk),
 
@@ -294,7 +294,7 @@ dpram #(12,16) io_buf0
 	.q_b(buf_q[15:0])
 );
 
-dpram #(12,16) io_buf1
+dpram #(.DATAWIDTH(16), .ADDRWIDTH(12)) io_buf1 // karabas: dpram of karabas-go-modules (parameters by name)
 (
 	.clock(clk),
 

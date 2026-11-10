@@ -73,7 +73,7 @@ localparam IMG_TI99        = 3; // V9T9 format
 parameter  IMG_TYPE        = IMG_ARCHIE;
 
 localparam W    = FD_NUM - 1;
-localparam WIDX = $clog2(FD_NUM);
+localparam WIDX = (FD_NUM > 2) ? 2 : 1; // karabas: no $clog2 in a localparam for XST (FD_NUM 1..4)
 
 // -------------------------------------------------------------------------
 // --------------------- IO controller image handling ----------------------
@@ -746,7 +746,7 @@ localparam SD_IDLE = 0;
 localparam SD_READ = 1;
 localparam SD_WRITE = 2;
 
-reg [1:0] sd_state;
+reg [1:0] sd_state = SD_IDLE; // karabas: an initial value, else XST trims sd_rd / sd_wr (as in core-atarist)
 reg       sd_card_write;
 reg       sd_card_read;
 
@@ -1055,26 +1055,35 @@ module fdc1772_dpram #(ADDRWIDTH=9)
 	output     reg  [7:0] q_b
 );
 
-logic [1:0][7:0] ram[0:(1<<(ADDRWIDTH-1))-1];
+// karabas: two 8-bit memories instead of one with a 16-bit and an 8-bit port (the part-select
+// write of port B kept XST busy for more than 30 minutes); same ports and read latency.
+reg [7:0] ram_lo[0:(1<<(ADDRWIDTH-1))-1];
+reg [7:0] ram_hi[0:(1<<(ADDRWIDTH-1))-1];
+reg [7:0] qa_lo, qa_hi, qb_lo, qb_hi;
+reg       qb_sel;
+
+always @(*) q_a = {qa_hi, qa_lo};
+always @(*) q_b = qb_sel ? qb_hi : qb_lo;
 
 always@(posedge clock) begin
-	if(wren_a) begin
-		ram[address_a] <= data_a;
-		q_a <= data_a;
-	end
-	else begin
-		q_a <= ram[address_a];
-	end
+	if(wren_a) ram_lo[address_a] <= data_a[7:0];
+	qa_lo <= wren_a ? data_a[7:0] : ram_lo[address_a];
 end
 
 always@(posedge clock) begin
-	if(wren_b) begin
-		ram[address_b[ADDRWIDTH-1:1]][address_b[0]] <= data_b;
-		q_b <= data_b;
-	end
-	else begin
-		q_b <= ram[address_b[ADDRWIDTH-1:1]][address_b[0]];
-	end
+	if(wren_a) ram_hi[address_a] <= data_a[15:8];
+	qa_hi <= wren_a ? data_a[15:8] : ram_hi[address_a];
+end
+
+always@(posedge clock) begin
+	if(wren_b & ~address_b[0]) ram_lo[address_b[ADDRWIDTH-1:1]] <= data_b;
+	qb_lo <= (wren_b & ~address_b[0]) ? data_b : ram_lo[address_b[ADDRWIDTH-1:1]];
+end
+
+always@(posedge clock) begin
+	if(wren_b & address_b[0]) ram_hi[address_b[ADDRWIDTH-1:1]] <= data_b;
+	qb_hi <= (wren_b & address_b[0]) ? data_b : ram_hi[address_b[ADDRWIDTH-1:1]];
+	qb_sel <= address_b[0];
 end
 
 endmodule

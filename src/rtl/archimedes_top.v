@@ -19,7 +19,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-module archimedes_top #(parameter CLKCPU)
+module archimedes_top #(parameter CLKCPU = 42000000) // karabas: a default (XST, sv2v top)
 (
 	// base CPU Clock
 	input          CLKCPU_I,

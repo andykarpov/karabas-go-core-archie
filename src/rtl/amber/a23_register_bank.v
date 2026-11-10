@@ -399,7 +399,8 @@ assign o_rn = i_rn_sel == 4'd0  ? r0_out  :
                                   r15_out_rn ; 
 
 
-// synthesis translate_off
+// karabas: `ifdef instead of translate_off (sv2v drops the comment, XST then wants cpu_export)
+`ifdef A23_CPU_EXPORT
 cpu_export cpu_export_inst(
     .clk                (i_clk),
     .rst                (i_reset),
@@ -423,7 +424,8 @@ cpu_export cpu_export_inst(
     .R14                (r14),
     .R15                ({ 8'd0 , r15 })
 );
-// synthesis translate_on
+`endif
+
 
 endmodule
 

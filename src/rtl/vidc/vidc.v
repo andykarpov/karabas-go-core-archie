@@ -26,7 +26,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-module vidc #(parameter CLKCPU)
+module vidc #(parameter CLKCPU = 42000000) // karabas: a default (XST)
 (
 	input 	 	  clkcpu, // cpu bus clock domain
 
