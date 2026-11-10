@@ -29,14 +29,15 @@
  burst 1: a run of READ / WRITE commands one per clock in an open row, the last with auto precharge.
  SDR_CLK is clk inverted (ODDR2 in the top): commands, address and write data in IOB flip-flops on
  the rising edge of clk have half a period of setup and hold at the SDRAM; read data are taken by an
- IOB flip-flop on the falling edge of clk, RD_DELAY clocks after the READ (msx2_fb_sdram.v).
+ IOB flip-flop on the falling edge of clk (msx2_fb_sdram.v) and a second falling-edge stage,
+ RD_DELAY (4) clocks after the READ.
  Refresh: 8192 in 64 ms (one per REFRESH_CLOCKS), owed ones made when idle.
 */
 module archie_sdram #(
 	parameter INIT_CLOCKS = 15'd18000,    // 214 us at 84 MHz
 	parameter REFRESH_CLOCKS = 10'd640,   // 7.6 us
 	parameter CHUNK = 7'd64,
-	parameter RD_DELAY = 3
+	parameter RD_DELAY = 4
 ) (
 	input wire clk,
 	input wire wb_clk,
@@ -99,12 +100,23 @@ reg [1:0] ack_n = 2'd0;               // wb_clk: acks still to send
 reg [1:0] ack_w = 2'd0;
 reg req_prev = 1'b0;
 wire wb_req = wb_cyc & wb_stb & ~wb_ack;
+// the request, registered in wb_clk when req_t toggles: clk_mem takes these flip-flops (the address of
+// MEMC is combinational through its page tables: as a path into clk_mem it would get 12.5 ns)
+reg [23:2] q_adr = 22'd0;
+reg [31:0] q_dat = 32'd0;
+reg [3:0] q_sel = 4'd0;
+reg q_we = 1'b0;
 
 always @(posedge wb_clk) begin
 	wb_ack <= 1'b0;
 	req_prev <= wb_req;
-	if (wb_req && !req_prev && ack_n == 2'd0)
+	if (wb_req && !req_prev && ack_n == 2'd0) begin
 		req_t <= ~req_t;
+		q_adr <= wb_adr;
+		q_dat <= wb_dat_i;
+		q_sel <= wb_sel;
+		q_we <= wb_we;
+	end
 	done_wb1 <= done_t;
 	done_wb2 <= done_wb1;
 	if (!(wb_cyc & wb_stb)) ack_n <= 2'd0;
@@ -146,8 +158,14 @@ generate
 	end
 endgenerate
 
-always @(negedge clk)
+// a second falling-edge stage in the fabric: from the IOB to fabric logic of the rising edge was half a
+// clock (6.25 ns) with a long route out of the IOB; IOB -> dq_neg2 is a whole clock, dq_neg2 -> the
+// rising edge is local
+reg [15:0] dq_neg2 = 16'd0;
+always @(negedge clk) begin
 	dq_neg <= sdr_dq;
+	dq_neg2 <= dq_neg;
+end
 
 // ---------------------------------------------------------------- controller (clk)
 
@@ -230,15 +248,15 @@ always @(posedge clk) begin
 	fbr_we <= 1'b0;
 	if (rd_pipe[RD_DELAY-1]) begin
 		fbr_we <= 1'b1;
-		fbr_data <= dq_neg;
+		fbr_data <= dq_neg2;
 		fbr_addr <= { fbr_b, fbr_next };
 		fbr_next <= fbr_next + 10'd1;
 	end
 	if (wb_pipe[RD_DELAY-1]) begin
 		if (wb_dat_n[0])
-			rd_word[wb_dat_n[2:1]][31:16] <= dq_neg;
+			rd_word[wb_dat_n[2:1]][31:16] <= dq_neg2;
 		else
-			rd_word[wb_dat_n[2:1]][15:0] <= dq_neg;
+			rd_word[wb_dat_n[2:1]][15:0] <= dq_neg2;
 		wb_dat_n <= wb_dat_n + 3'd1;
 	end
 
@@ -308,17 +326,17 @@ always @(posedge clk) begin
 				state <= S_WAIT;
 			end else if (wb_pend) begin
 				req_seen <= req_c1;
-				w_adr <= wb_adr;
-				w_dat <= wb_dat_i;
-				w_sel <= wb_sel;
-				w_we <= wb_we;
+				w_adr <= q_adr;
+				w_dat <= q_dat;
+				w_sel <= q_sel;
+				w_we <= q_we;
 				cmd(CMD_ACTIVE);
-				ba_r <= wb_adr[23:22];
-				a_r <= { 1'b0, wb_adr[21:10] };
+				ba_r <= q_adr[23:22];
+				a_r <= { 1'b0, q_adr[21:10] };
 				wb_cmd_n <= 3'd0;
 				wb_dat_n <= 3'd0;
 				cnt <= 15'd0;                 // tRCD: one clock between
-				next_state <= wb_we ? S_WB_WR : S_WB_RD;
+				next_state <= q_we ? S_WB_WR : S_WB_RD;
 				state <= S_WAIT;
 			end else if (fbr_pend && fbr_left != 11'd0) begin
 				cmd(CMD_ACTIVE);

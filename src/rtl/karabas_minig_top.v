@@ -225,6 +225,18 @@ wire [8:0] img_data_addr;
 wire [15:0] img_sum;
 wire [23:0] img_q_di;
 wire [7:0] rtc_a, rtc_do;
+wire [15:0] dbg_addr;          // see debug below
+wire key_strobe, key_up, mouse_strobe;
+wire [7:0] key_code, mouse_dx, mouse_dy;
+wire [2:0] mouse_buttons;
+wire [7:0] kbd_out_data, kbd_in_data;
+wire kbd_out_strobe, kbd_in_strobe;
+reg rom_ok = 1'b0;
+reg [15:0] dbg_data = 16'd0;
+wire ld_overflow, kbd_scan, kbd_mouse;
+wire [9:0] fb_cap_h;
+wire m_cyc, m_stb;
+wire [23:2] m_adr;
 
 kg_mcu #(
 	.BURST_MAX_MHZ(32),
@@ -232,7 +244,7 @@ kg_mcu #(
 	.ENABLE_RTC(0),
 	.ENABLE_UART(0),
 	.ENABLE_MATRIX(0),
-	.ENABLE_DEBUG(0),
+	.ENABLE_DEBUG(1),    // the state of the machine (AT+KARABAS=debug:1, kg_board.py log)
 	.ENABLE_IMG(0),
 	.ENABLE_IMG_WP(0),
 	.ENABLE_MIDI(0),
@@ -321,8 +333,8 @@ kg_mcu #(
 	.UART_DLL_WR(1'b0),
 	.MATRIX_CMD(24'h000000),
 	.MATRIX_CMD_WR(1'b0),
-	.DEBUG_ADDR(16'h0000),
-	.DEBUG_DATA(16'h0000),
+	.DEBUG_ADDR(dbg_addr),
+	.DEBUG_DATA(dbg_data),
 	.IMG_MOUNTED(img_mounted),
 	.IMG_SIZE(img_size),
 	.IMG_WP(img_wp),
@@ -347,6 +359,33 @@ assign FT_SPI_MOSI = ft_spi_on ? ft_mosi : 1'b1;
 assign SD_CS_N = sd2_cs_n;
 assign SD_DI = sd2_mosi;
 assign SD_CLK = mcu_sck_ibufg;
+
+// ------------------------------------------------------------------ debug
+
+// DEBUG_ADDR: { rom_ok, sdr_ready, machine_reset, ld_done, file_active, ld_overflow, kbd scan, kbd mouse,
+//               baseclk[1:0], selpix[1:0], a frame captured, 0, 0, 0 }
+// DEBUG_DATA, sampled every 2^24 clocks (0.42 s), two kinds by turns (bit 15):
+//   0: { 0, kbd scan, kbd mouse, key events of archie_hid (5 bits, wrapping), the last byte from the IOC }
+//   1: { 1, rom_ok, 0, mouse button changes (5 bits), the last byte to the IOC }
+reg [23:0] dbg_cnt = 24'd0;
+reg dbg_kind = 1'b0;
+reg [4:0] dbg_keys = 5'd0, dbg_buts = 5'd0;
+reg [7:0] dbg_rx = 8'd0, dbg_tx = 8'd0;
+reg dbg_rx_d = 1'b0;
+reg [2:0] dbg_btn_d = 3'd0;
+always @(posedge clk_sys) begin
+	dbg_cnt <= dbg_cnt + 24'd1;
+	if (key_strobe) dbg_keys <= dbg_keys + 5'd1;
+	dbg_btn_d <= mouse_buttons;
+	if (mouse_buttons != dbg_btn_d) dbg_buts <= dbg_buts + 5'd1;
+	dbg_rx_d <= kbd_out_strobe;
+	if (kbd_out_strobe && !dbg_rx_d) dbg_rx <= kbd_out_data;
+	if (kbd_in_strobe) dbg_tx <= kbd_in_data;
+	if (dbg_cnt == 24'd0) begin
+		dbg_kind <= ~dbg_kind;
+		dbg_data <= dbg_kind ? { 1'b1, rom_ok, 1'b0, dbg_buts, dbg_tx } : { 1'b0, kbd_scan, kbd_mouse, dbg_keys, dbg_rx };
+	end
+end
 
 // ------------------------------------------------------------------ soft switches
 
@@ -383,11 +422,10 @@ archie_loader loader (
 	.wb_ack(ld_ack),
 	.busy(ld_busy),
 	.done(ld_done),
-	.overflow()
+	.overflow(ld_overflow)
 );
 
 // the machine runs once a ROM went in (until then: black, the OSD works)
-reg rom_ok = 1'b0;
 always @(posedge clk_sys)
 	if (ld_done) rom_ok <= 1'b1;
 
@@ -418,20 +456,18 @@ end
 
 // ------------------------------------------------------------------ the machine
 
+
 wire ce_pix, ce_aud;
 wire [1:0] selpix, baseclk;
 wire [3:0] vid_r, vid_g, vid_b;
 wire vid_hs_n, vid_vs_n, vid_en;
 wire [15:0] audio_l, audio_r;
 wire i2c_dout, i2c_din, i2c_clock;
-wire [7:0] kbd_out_data, kbd_in_data;
-wire kbd_out_strobe, kbd_in_strobe;
 wire [4:0] joy0, joy1;
 
-wire m_cyc, m_stb, m_we;
+wire m_we;
 wire [3:0] m_sel;
 wire [2:0] m_cti;
-wire [23:2] m_adr;
 wire [31:0] m_dout;
 wire [31:0] wb_din;
 wire wb_ack;
@@ -508,10 +544,6 @@ archie_cmos u_cmos (
 	.clk(clk_sys), .reset(machine_reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din), .changes()
 );
 
-wire key_strobe, key_up, mouse_strobe;
-wire [7:0] key_code, mouse_dx, mouse_dy;
-wire [2:0] mouse_buttons;
-
 archie_hid hid (
 	.clk(clk_sys),
 	.reset(areset),
@@ -553,8 +585,8 @@ archie_kbd #(.CLK_HZ(40000000)) u_kbd (
 	.mouse_dx(mouse_dx),
 	.mouse_dy(mouse_dy),
 	.mouse_buttons(mouse_buttons),
-	.scan_enabled(),
-	.mouse_enabled()
+	.scan_enabled(kbd_scan),
+	.mouse_enabled(kbd_mouse)
 );
 
 // ------------------------------------------------------------------ SDRAM
@@ -646,7 +678,7 @@ archie_fb fb (
 	.vs(fb_vs),
 	.de(fb_de),
 	.cap_w(),
-	.cap_h(),
+	.cap_h(fb_cap_h),
 	.dropped()
 );
 
@@ -716,5 +748,9 @@ hdmi_tx #(.SAMPLE_FREQ(48000)) hdmi (
 	.tx_d_n(TMDS_N[2:0]),
 	.tx_d_p(TMDS_P[2:0])
 );
+
+// the debug state (see debug above)
+assign dbg_addr = { rom_ok, sdr_ready_s, machine_reset, ld_done, file_active, ld_overflow, kbd_scan, kbd_mouse,
+	baseclk, selpix, fb_cap_h != 10'd0, 3'b000 };
 
 endmodule

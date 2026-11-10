@@ -11,7 +11,8 @@
  takes about eight: bytes of one 32-bit word are collected (with their byte selects) and the words wait
  in a FIFO of 16. A word goes out when a byte of another word comes or after IDLE clocks without a byte
  (the last word of the file). Bytes past ROM_BYTES are dropped. overflow is set if the FIFO was full.
- done is set at the end of a file (active falling) once the FIFO is empty.
+ done is set at the end of a file (active falling; the mcu sends it well after the last byte) once
+ the word collector and the FIFO are empty.
 */
 module archie_loader #(
 	parameter [31:0] ROM_BYTES = 32'h00200000,
@@ -57,6 +58,7 @@ wire full = (wp + 4'd1) == rp;
 reg push = 1'b0;
 reg [55:0] push_w = 56'd0;
 reg active_d = 1'b0;
+reg ended = 1'b0;                     // the file ended (active fell), done once all is out
 
 wire in_rom = addr < ROM_BYTES;
 wire [3:0] lane = 4'b0001 << addr[1:0];
@@ -70,9 +72,14 @@ always @(posedge clk) begin
 		rp <= 4'd0;
 		wb_cyc <= 1'b0;
 		done <= 1'b0;
+		ended <= 1'b0;
 		overflow <= 1'b0;
 	end else begin
-		if (active && !active_d) done <= 1'b0;
+		if (active && !active_d) begin
+			done <= 1'b0;
+			ended <= 1'b0;
+		end
+		if (!active && active_d) ended <= 1'b1;
 
 		// collect
 		if (wr && active && in_rom) begin
@@ -120,8 +127,10 @@ always @(posedge clk) begin
 			rp <= rp + 4'd1;
 		end
 
-		if (!active && active_d) done <= 1'b0;
-		if (!active && !have && !push && empty && !wb_cyc && busy) done <= 1'b1;
+		if (ended && !active && !have && !push && empty && !wb_cyc) begin
+			done <= 1'b1;
+			ended <= 1'b0;
+		end
 	end
 	busy <= have || push || !empty || wb_cyc;
 end
