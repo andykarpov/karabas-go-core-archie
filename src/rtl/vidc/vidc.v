@@ -162,7 +162,9 @@ vidc_timing TIMING(
 );
 
 // this module does the math for a DMA channel
-vidc_dmachannel VIDEODMA (
+// karabas: a FIFO of 16 words (8 upstream): the SDRAM of the boards may answer a DMA request after a
+// frame buffer chunk (archie_sdram), up to 0.6 us, about the time 4 words last in 8 bpp at 25 MHz
+vidc_dmachannel #(.FIFO_SIZE(4)) VIDEODMA (
 
 	.rst_cpu	   ( flybk_sys | rst_i | rst_vid_cpu_i ),
 	.rst_dev	   ( flybk | rst_vid_i ),
