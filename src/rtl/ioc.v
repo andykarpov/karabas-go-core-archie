@@ -27,7 +27,9 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
  
-module ioc
+// karabas: the dividers of the 2 MHz and the FDC clock enables as parameters (42 MHz: 21, 6 as
+// upstream; the boards run clkcpu at 40 MHz: 20, 5 = 2 MHz and 8 MHz)
+module ioc #(parameter CLK2_DIV = 21, parameter CLK7_DIV = 6)
 (
 	input 	 		clkcpu, 	// cpu bus clock domain
 	output reg		clk2m_en,
@@ -215,11 +217,11 @@ always @(posedge clkcpu) begin
 
 		// increment the clock counter. 42 MHz clkcpu assumed.
 		clk2en_counter <= clk2en_counter + 1'd1;
-		if (clk2en_counter == 20) clk2en_counter <= 0;
+		if (clk2en_counter == CLK2_DIV - 1) clk2en_counter <= 0;
 		clk2m_en <= !clk2en_counter;
 
 		clk7en_counter <= clk7en_counter + 1'd1;
-		if (clk7en_counter == 5) clk7en_counter <= 0;
+		if (clk7en_counter == CLK7_DIV - 1) clk7en_counter <= 0;
 		clk7m_en <= !clk7en_counter;
 
 		if (write_request & ctrl_selected) begin 

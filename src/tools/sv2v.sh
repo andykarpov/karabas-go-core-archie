@@ -19,3 +19,22 @@ $SV2V -I amber --top=archimedes_top --top=EEPROM_24C0x $SRC -w sv2v 2>&1 | grep 
 ls sv2v | wc -l
 # archie.prj: the machine alone (make archie-xst) and the source list of the simulations
 { echo 'verilog work "../modules/rtl/mem/dpram.v"'; for f in sv2v/*.v; do echo "verilog work \"rtl/$f\""; done; } > ../archie.prj
+# the board projects: their rtl/sv2v lines replaced by the current list (the other lines kept, in place)
+for p in ../karabas_*.prj; do
+	[ -f "$p" ] || continue
+	python3 -I - "$p" ../archie.prj <<'PY'
+import sys
+board, machine = sys.argv[1], sys.argv[2]
+lines = open(board).read().splitlines()
+sv = [l for l in open(machine).read().splitlines() if 'rtl/sv2v/' in l]
+out, done = [], False
+for l in lines:
+    if 'rtl/sv2v/' in l:
+        if not done:
+            out += sv
+            done = True
+        continue
+    out.append(l)
+open(board, 'w').write('\n'.join(out) + '\n')
+PY
+done

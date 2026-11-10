@@ -529,7 +529,9 @@ generate
             );
             
         // Data RAMs 
-        sram_byte_en
+        // karabas: sram_line_en (whole lines) instead of sram_byte_en: the byte enables are all ones here,
+        // and 16 byte lanes per way did not fit the block RAMs (XST put ten of them in LUTs)
+        sram_line_en
             #(
             .DATA_WIDTH    ( CACHE_LINE_WIDTH) ,
             .ADDRESS_WIDTH ( CACHE_ADDR_WIDTH) )
@@ -538,7 +540,6 @@ generate
             .i_write_data               ( data_wdata                    ),
             .i_write_enable             ( data_wenable_way[i]           ),
             .i_address                  ( data_address                  ),
-            .i_byte_enable              ( {CACHE_LINE_WIDTH/8{1'd1}}    ),
             .o_read_data                ( data_rdata_way[i]             )
             );                                                     
 
