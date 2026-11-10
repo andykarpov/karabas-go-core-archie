@@ -221,7 +221,8 @@ wire img_data_wr, img_result_wr, img_q_wr, img_q_ack;
 wire [8:0] img_data_addr;
 wire [15:0] img_sum;
 wire [23:0] img_q_di;
-wire [7:0] rtc_a, rtc_do;
+wire [7:0] rtc_a, rtc_di, rtc_do;
+wire rtc_cs, rtc_wr_n;
 wire [15:0] dbg_addr;          // see debug below
 wire key_strobe, key_up, mouse_strobe;
 wire [7:0] key_code, mouse_dx, mouse_dy;
@@ -238,12 +239,12 @@ wire [23:2] m_adr;
 kg_mcu #(
 	.BURST_MAX_MHZ(32),
 	.CS_FILTER(3),
-	.ENABLE_RTC(0),
+	.ENABLE_RTC(1),      // the PCF8583 of archie_cmos on the MC146818A registers (rtc_mode 0)
 	.ENABLE_UART(0),
 	.ENABLE_MATRIX(0),
 	.ENABLE_DEBUG(1),    // the state of the machine (AT+KARABAS=debug:1, kg_board.py log)
-	.ENABLE_IMG(0),
-	.ENABLE_IMG_WP(0),
+	.ENABLE_IMG(1),      // the floppies (img_sdc, archie_fdd)
+	.ENABLE_IMG_WP(1),
 	.ENABLE_MIDI(0),
 	.ENABLE_FILE(1),
 	.FILE_CMDS(0),       // the ioctl commands of the FL items
@@ -315,10 +316,10 @@ kg_mcu #(
 	.PS2_COMMAND(16'h0000),
 	.PS2_COMMAND_WR(1'b0),
 	.RTC_A(rtc_a),
-	.RTC_DI(8'd0),
+	.RTC_DI(rtc_di),
 	.RTC_DO(rtc_do),
-	.RTC_CS(1'b0),
-	.RTC_WR_N(1'b1),
+	.RTC_CS(rtc_cs),
+	.RTC_WR_N(rtc_wr_n),
 	.UART_RX_DATA(uart_rx_data),
 	.UART_RX_IDX(uart_rx_idx),
 	.UART_TX_DATA(uart_tx_data),
@@ -435,9 +436,10 @@ always @(posedge clk_sys) begin
 	sdr_ready_s <= sdr_ready_s1;
 end
 
-// the machine in reset: the PLL, the SDRAM init, a ROM load (and until the first), the Reset item
+// the machine in reset: the PLL, the SDRAM init, a ROM load (and until the first), the Reset item,
+// the start of the mcu (it fills the RTC registers: the CMOS)
 reg [7:0] rst_cnt = 8'hFF;
-wire rst_req = areset || !sdr_ready_s || rom_loading || ld_busy || !rom_ok || sw_reset;
+wire rst_req = areset || !sdr_ready_s || rom_loading || ld_busy || !rom_ok || sw_reset || mcu_busy;
 always @(posedge clk_sys)
 	if (rst_req)
 		rst_cnt <= 8'hFF;
@@ -450,6 +452,75 @@ always @(posedge clk_mem) begin
 	mem_reset_m1 <= areset;
 	mem_reset_m <= mem_reset_m1;
 end
+
+// ------------------------------------------------------------------ floppies
+
+// img_sdc (the file mounter of the mcu: slots 0 / 1 = Floppy A / B) and archie_fdd (its bytes to the
+// 16-bit buffer of fdc1772, OUT_LATENCY 3)
+wire [7:0] sdc_img_mounted;
+wire [63:0] sdc_img_size;
+wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe;
+wire [2:0] sdc_slot;
+wire [8:0] sdc_byte_addr;
+wire [7:0] sdc_byte_in_data, sdc_byte_out_data;
+wire img_active, fdd_led;
+wire [1:0] fdd_img_mounted, fdd_rd, fdd_wr;
+wire [31:0] fdd_img_size, fdd_lba;
+wire fdd_img_wp, fdd_ack, fdd_buff_wr, fdd_sel;
+wire [7:0] fdd_buff_addr;
+wire [15:0] fdd_buff_dout, fdd_buff_din;
+
+img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd8000000)) img_sdc (
+	.clk(clk_sys),
+	.reset(areset),
+	.img_mounted(img_mounted),
+	.img_size(img_size),
+	.img_data_wr(img_data_wr),
+	.img_data_addr(img_data_addr),
+	.img_data(img_data),
+	.img_result_wr(img_result_wr),
+	.img_result(img_result),
+	.img_sum(img_sum),
+	.img_q_wr(img_q_wr),
+	.img_q_di(img_q_di),
+	.img_q_ack(img_q_ack),
+	.sdc_img_mounted(sdc_img_mounted),
+	.sdc_img_size(sdc_img_size),
+	.sdc_rd({ 6'd0, fdd_rd }),
+	.sdc_wr({ 6'd0, fdd_wr }),
+	.sdc_sector(fdd_lba),
+	.sdc_busy(sdc_busy),
+	.sdc_done(sdc_done),
+	.sdc_error(sdc_error),
+	.sdc_slot(sdc_slot),
+	.sdc_byte_in_strobe(sdc_byte_in_strobe),
+	.sdc_byte_addr(sdc_byte_addr),
+	.sdc_byte_in_data(sdc_byte_in_data),
+	.sdc_byte_out_data(sdc_byte_out_data),
+	.active(img_active)
+);
+
+archie_fdd fdd (
+	.clk(clk_sys),
+	.sdc_img_mounted(sdc_img_mounted),
+	.sdc_img_size(sdc_img_size),
+	.img_wp_all(img_wp),
+	.sdc_busy(sdc_busy),
+	.sdc_slot(sdc_slot),
+	.sdc_byte_in_strobe(sdc_byte_in_strobe),
+	.sdc_byte_addr(sdc_byte_addr),
+	.sdc_byte_in_data(sdc_byte_in_data),
+	.sdc_byte_out_data(sdc_byte_out_data),
+	.sel(fdd_sel),
+	.img_mounted(fdd_img_mounted),
+	.img_size(fdd_img_size),
+	.img_wp(fdd_img_wp),
+	.sd_ack(fdd_ack),
+	.sd_buff_addr(fdd_buff_addr),
+	.sd_buff_dout(fdd_buff_dout),
+	.sd_buff_wr(fdd_buff_wr),
+	.sd_buff_din(fdd_buff_din)
+);
 
 // ------------------------------------------------------------------ the machine
 
@@ -508,19 +579,19 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.I2C_DOUT(i2c_dout),
 	.I2C_DIN(i2c_din),
 	.I2C_CLOCK(i2c_clock),
-	.fdd_led(),
+	.fdd_led(fdd_led),
 	.hdd_led(),
-	.img_mounted(2'b00),
-	.img_wp(1'b0),
-	.img_size(32'd0),
-	.sd_lba(),
-	.sd_rd(),
-	.sd_wr(),
-	.sd_ack(1'b0),
-	.sd_buff_addr(8'd0),
-	.sd_buff_dout(16'd0),
-	.sd_buff_din(),
-	.sd_buff_wr(1'b0),
+	.img_mounted(fdd_img_mounted),
+	.img_wp(fdd_img_wp),
+	.img_size(fdd_img_size),
+	.sd_lba(fdd_lba),
+	.sd_rd(fdd_rd),
+	.sd_wr(fdd_wr),
+	.sd_ack(fdd_ack),
+	.sd_buff_addr(fdd_buff_addr),
+	.sd_buff_dout(fdd_buff_dout),
+	.sd_buff_din(fdd_buff_din),
+	.sd_buff_wr(fdd_buff_wr),
 	.ide_req(),
 	.ide_address(5'd0),
 	.ide_write(1'b0),
@@ -538,7 +609,9 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 );
 
 archie_cmos u_cmos (
-	.clk(clk_sys), .reset(machine_reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din), .changes()
+	.clk(clk_sys), .reset(machine_reset), .scl(i2c_clock), .sda_in(i2c_dout), .sda_out(i2c_din),
+	.rtc_a(rtc_a), .rtc_di(rtc_di), .rtc_do(rtc_do), .rtc_cs(rtc_cs), .rtc_wr_n(rtc_wr_n),
+	.changes()
 );
 
 archie_hid hid (

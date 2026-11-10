@@ -28,10 +28,11 @@ XIL = source $(ISE_SETTINGS) > /dev/null;
 KG = archie.kg
 JSON = core.json
 
-# map / par options (cost table 2 by default, the rule of all the cores)
+# map / par options (cost table 2 by default, the rule of all the cores; Mini G 6: at 99 % slices
+# the router of par stayed in phase 4 for good with 2, 3 and 4)
 MAP_T_go ?= 2
 MAP_T_mini ?= 2
-MAP_T_minig ?= 2
+MAP_T_minig ?= 6
 MAP = -logic_opt off -ol high -xe n -xt 3 -register_duplication off -r 4 -global_opt off -mt 2 -detail -ir off -pr b -lc auto -power off
 PAR = -ol high -xe c -mt 4
 
