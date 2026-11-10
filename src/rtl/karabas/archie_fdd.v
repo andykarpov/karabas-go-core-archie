@@ -7,8 +7,10 @@
  a 16-bit buffer, sd_buff_addr = the word of a 512-byte sector) on img_sdc of karabas-go-modules
  (the file mounter of the mcu: bytes with an address, slots 0 / 1 = drives 0 / 1).
 
- - sd_ack while img_sdc serves a request of a drive slot (sdc_busy with sdc_slot 0 / 1): fdc1772
-   drops sd_rd / sd_wr on it and takes its fall as the end of the sector;
+ - sd_ack while img_sdc serves a request of a drive slot (sdc_busy with sdc_slot 0 / 1) and a clock
+   longer: fdc1772 drops sd_rd / sd_wr on it and takes its fall as the end of the sector, and writes
+   its buffer only while it is up (the last word comes a clock after the last byte, when sdc_busy
+   may be down already: without the extra clock bytes 510 / 511 of each half were lost);
  - read: the bytes of img_sdc (sdc_byte_in_strobe) in pairs, the even one low (the byte order of
    the fifo of fdc1772): the odd one writes the word { odd, even } a clock later;
  - write: img_sdc copies the sector out by sdc_byte_addr; the word is read a clock after the
@@ -45,7 +47,9 @@ module archie_fdd (
 );
 
 assign sel = sdc_slot[2:1] == 2'b00;
-assign sd_ack = sdc_busy && sel;
+reg ack_d = 1'b0;
+always @(posedge clk) ack_d <= sdc_busy && sel;
+assign sd_ack = (sdc_busy && sel) || ack_d;
 
 assign img_mounted = sdc_img_mounted[1:0];
 assign img_size = sdc_img_size[31:0];
