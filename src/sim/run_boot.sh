@@ -13,7 +13,7 @@ KG="rtl/karabas/archie_ce.v rtl/karabas/archie_cmos.v rtl/karabas/archie_kbd.v"
 # SDRAM=1: the memory of the boards (sim_top_sdram.v: archie_sdram, sdram_model, archie_fb), else sim_top.v
 if [ -n "$SDRAM" ]; then
 	TOP=sim_top_sdram; OBJ=obj_sdram; DEFS=-DSIM_SDRAM
-	KG="$KG rtl/karabas/archie_sdram.v rtl/karabas/archie_fb.v sim/sdram_model.v sim/sim_top_sdram.v"
+	KG="$KG rtl/karabas/archie_sdram.v rtl/karabas/archie_sram.v rtl/karabas/archie_fb.v sim/sdram_model.v sim/sram_model.v sim/sim_top_sdram.v"
 else
 	TOP=sim_top; OBJ=obj; DEFS=
 	KG="$KG sim/sim_top.v"

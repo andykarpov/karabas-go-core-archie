@@ -337,8 +337,9 @@ int main(int argc, char **argv) {
 	}
 #endif
 #ifdef SIM_SDRAM
-	printf("SDRAM model: %d timing errors\n", tb->sdr_errors);
-	if (tb->sdr_errors) sdram_bad = true;
+	printf("SDRAM model: %d timing errors; SRAM model: %d errors; frame buffer: %d lines dropped\n",
+		tb->sdr_errors, tb->sram_errors, tb->fb_dropped);
+	if (tb->sdr_errors || tb->sram_errors) sdram_bad = true;
 #endif
 	if (!pc_hist.empty()) {
 		std::vector<std::pair<long, uint32_t>> v;

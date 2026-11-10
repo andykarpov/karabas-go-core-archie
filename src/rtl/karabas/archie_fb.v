@@ -8,12 +8,15 @@
  positive syncs), so the monitor always gets one standard mode (the user's rule).
 
  Capture (clk_sys, the VIDC with its pixel enable ce): the pixels inside VIDEO_EN (de). A line
- is a run of de; its pixels (12-bit RGB in 16-bit words, up to 1024) go into one half of the capture
- buffer (block RAM, read by clk_mem), and at the end of the run a request (a toggle with the frame,
- the line and the length) asks the SDRAM side to write it to row { frame, line } (two SDRAM rows of
- 512 words). A frame ends at the start of vsync: its height and the width of its last line are
- kept, it becomes the done frame, and the writer takes the frame that is neither done nor shown
- (three frames). A line that comes while the one before is still being written is dropped.
+ is a run of de; its pixels (12-bit RGB in 16-bit words, up to 1024) go into one of four slots of the
+ capture buffer (block RAM, read by clk_mem); at the end of the run the slot is queued (its row
+ { frame, line } and length in a descriptor, the write pointer to clk_mem in Gray code) and the SDRAM
+ side writes the queued lines in order to their rows (two SDRAM rows of 512 words). Up to three lines
+ wait while the fourth slot fills. A frame ends at the start of vsync: if all of its lines were
+ queued, its height and the width of its last line are kept and it becomes the done frame, and the
+ writer takes a frame that is neither the new done one, the done one before (the output may just
+ have taken it) nor the shown one (four frames). A line that finds the queue full is dropped, and
+ its frame is not shown: the writer does it again (the picture stays on the last whole frame).
 
  Output (clk_pix): the shown frame is taken at the start of each output frame (the done one). A
  picture narrower than 401 pixels is shown with each pixel twice, one lower than 301 lines with each
@@ -69,12 +72,10 @@ module archie_fb (
 // ================================================================ declarations
 
 reg [15:0] line_mem [0:2047];
-reg wt1 = 1'b0, wt2 = 1'b0, wt3 = 1'b0;
 reg rt1 = 1'b0, rt2 = 1'b0, rt3 = 1'b0;
-reg w_pend = 1'b0, r_pend = 1'b0;
-reg [11:0] o_row_m = 12'd0;
-reg [10:0] o_len_m = 11'd0;
-reg o_buf_m = 1'b0;
+reg r_pend = 1'b0;
+// the line queue, clk_mem side (rp_g is read by clk_sys)
+reg [2:0] rp = 3'd0, rp_g = 3'd0;
 
 
 localparam [10:0] H_TOTAL = 11'd1056, H_ACT = 11'd800, H_SS = 11'd840, H_SE = 11'd968;
@@ -83,6 +84,7 @@ localparam [9:0] V_TOTAL = 10'd628, V_ACT = 10'd600, V_SS = 10'd601, V_SE = 10'd
 reg [10:0] hc = 11'd0;
 reg [9:0] vc = 10'd0;
 reg [1:0] fr_out = 2'd2;      // the frame shown
+reg frt = 1'b0;               // toggled when fr_out changes
 reg vt1 = 1'b0, vt2 = 1'b0, vt3 = 1'b0;
 reg [1:0] fd_p = 2'd1;
 reg [10:0] sw = 11'd0, sw_p = 11'd0;     // the size of the done frame (taken with it)
@@ -106,45 +108,52 @@ reg o_buf = 1'b0;
 
 // ================================================================ capture (clk_sys)
 
-reg [15:0] cap_mem [0:2047];
+reg [15:0] cap_mem [0:4095];
 reg de_d = 1'b0, vs_d = 1'b1;
 reg [10:0] x = 11'd0;
 reg [9:0] y = 10'd0;
-reg cbuf = 1'b0;
 reg [1:0] fw = 2'd0;          // the frame being written
 reg [1:0] fd = 2'd1;          // the done frame
-reg [1:0] fr_sys1 = 2'd2, fr_sys = 2'd2;   // the shown frame, seen in clk_sys
+reg [1:0] fr_sys = 2'd2;      // the shown frame, seen in clk_sys (taken on frt)
+reg frt1 = 1'b0, frt2 = 1'b0, frt3 = 1'b0;
+reg bad = 1'b0;               // a line of this frame was dropped
 reg [10:0] w_last = 11'd0;
-reg wtog = 1'b0;              // a line to write
-reg [11:0] w_row = 12'd0;
-reg [10:0] w_len = 11'd0;
-reg w_buf = 1'b0;
 reg vtog = 1'b0;              // a frame done: fd / cap_w / cap_h new
-reg busy_s1 = 1'b0, busy_s = 1'b0, pend_s1 = 1'b0, pend_s = 1'b0;
+// the line queue: slot wp[1:0] fills, rp .. wp - 1 wait (rp from clk_mem)
+reg [2:0] wp = 3'd0, wp_g = 3'd0;
+reg [2:0] rpg1 = 3'd0, rpg2 = 3'd0;
+wire [2:0] rp_s = { rpg2[2], rpg2[2] ^ rpg2[1], rpg2[2] ^ rpg2[1] ^ rpg2[0] };
+reg [11:0] q_row [0:3];
+reg [10:0] q_len [0:3];
+wire [2:0] q_used = wp - rp_s;
+// the frame the writer takes next: not the new done one, the done one before, the shown one
+wire [1:0] f_next = (fw != 2'd0 && fd != 2'd0 && fr_sys != 2'd0) ? 2'd0 :
+                    (fw != 2'd1 && fd != 2'd1 && fr_sys != 2'd1) ? 2'd1 :
+                    (fw != 2'd2 && fd != 2'd2 && fr_sys != 2'd2) ? 2'd2 : 2'd3;
 
 always @(posedge clk_sys) begin
-	fr_sys1 <= fr_out;
-	fr_sys <= fr_sys1;
-	busy_s1 <= w_pend | fbw_busy;
-	busy_s <= busy_s1;
+	frt1 <= frt; frt2 <= frt1; frt3 <= frt2;
+	if (frt2 != frt3) fr_sys <= fr_out;   // fr_out is stable for a frame after frt toggles
+	rpg1 <= rp_g; rpg2 <= rpg1;
+	wp_g <= wp ^ (wp >> 1);
 	vs_d <= vs_n_i;
 	if (ce) begin
 		de_d <= de_i;
 		if (de_i) begin
 			if (x != 11'd1024) begin
-				cap_mem[{ cbuf, x[9:0] }] <= { 4'h0, r_i, g_i, b_i };
+				cap_mem[{ wp[1:0], x[9:0] }] <= { 4'h0, r_i, g_i, b_i };
 				x <= x + 11'd1;
 			end
 		end else if (de_d) begin
-			// the end of a line: write it unless the one before is still on its way
+			// the end of a line: queue it unless three lines wait
 			if (y != 10'd1023) begin
-				if (busy_s) dropped <= dropped + 8'd1;
-				else begin
-					w_row <= { fw, y };
-					w_len <= x;
-					w_buf <= cbuf;
-					wtog <= ~wtog;
-					cbuf <= ~cbuf;
+				if (q_used >= 3'd3) begin
+					if (dropped != 8'hFF) dropped <= dropped + 8'd1;
+					bad <= 1'b1;
+				end else begin
+					q_row[wp[1:0]] <= { fw, y };
+					q_len[wp[1:0]] <= x;
+					wp <= wp + 3'd1;
 				end
 				y <= y + 10'd1;
 			end
@@ -152,16 +161,16 @@ always @(posedge clk_sys) begin
 			x <= 11'd0;
 		end
 	end
-	// the start of vsync: the frame is done
+	// the start of vsync: the frame is done (if whole)
 	if (vs_d && !vs_n_i) begin
-		if (y != 10'd0) begin
+		if (y != 10'd0 && !bad) begin
 			cap_w <= w_last;
 			cap_h <= y;
 			fd <= fw;
-			// the next frame: neither the new done one (fw) nor the shown one
-			fw <= (fw != 2'd0 && fr_sys != 2'd0) ? 2'd0 : (fw != 2'd1 && fr_sys != 2'd1) ? 2'd1 : 2'd2;
+			fw <= f_next;
 			vtog <= ~vtog;
 		end
+		bad <= 1'b0;
 		y <= 10'd0;
 		x <= 11'd0;
 	end
@@ -169,23 +178,37 @@ end
 
 // ================================================================ SDRAM side (clk_mem)
 
+reg [2:0] wpg1 = 3'd0, wpg2 = 3'd0;
+wire [2:0] wp_m = { wpg2[2], wpg2[2] ^ wpg2[1], wpg2[2] ^ wpg2[1] ^ wpg2[0] };
+reg [1:0] w_st = 2'd0;
+reg [1:0] slot_m = 2'd0;
+
 always @(posedge clk_mem) begin
-	fbw_data <= cap_mem[fbw_addr];
+	fbw_data <= cap_mem[{ slot_m, fbw_addr[9:0] }];
 	if (fbr_we) line_mem[fbr_addr] <= fbr_data;
 
-	wt1 <= wtog; wt2 <= wt1; wt3 <= wt2;
+	wpg1 <= wp_g; wpg2 <= wpg1;
+	rp_g <= rp ^ (rp >> 1);
 	rt1 <= rtog; rt2 <= rt1; rt3 <= rt2;
 	fbw_req <= 1'b0;
 	fbr_req <= 1'b0;
-	if (wt2 != wt3) begin
-		w_pend <= 1'b1;
-		fbw_row <= w_row;
-		fbw_len <= w_len;
-		fbw_buf <= w_buf;
-	end else if (w_pend && !fbw_busy && !fbw_req) begin
-		fbw_req <= 1'b1;
-		w_pend <= 1'b0;
-	end
+	// the queued lines in order: a request, the SDRAM side busy, done
+	case (w_st)
+	2'd0:
+		if (rp != wp_m && !fbw_busy) begin
+			fbw_row <= q_row[rp[1:0]];
+			fbw_len <= q_len[rp[1:0]];
+			slot_m <= rp[1:0];
+			fbw_req <= 1'b1;
+			w_st <= 2'd1;
+		end
+	2'd1: w_st <= 2'd2;               // fbw_busy rises in this clock
+	default:
+		if (!fbw_busy) begin
+			rp <= rp + 3'd1;
+			w_st <= 2'd0;
+		end
+	endcase
 	if (rt2 != rt3) begin
 		r_pend <= 1'b1;
 		fbr_row <= o_row;
@@ -235,6 +258,7 @@ always @(posedge clk_pix) begin
 	// the start of an output frame (the line before line 0): take the done frame and its size
 	if (hc == 11'd0 && vc == V_TOTAL - 10'd2) begin
 		fr_out <= fd_p;
+		if (fd_p != fr_out) frt <= ~frt;
 		valid <= valid_p;
 		sw <= sw_p;
 		sh <= sh_p;

@@ -13,8 +13,10 @@
  from clk_sys. MiSTer runs the machine at 42 MHz; 40 MHz is the MiST clock: the IOC 2 MHz and the
  FDC 8 MHz enables come from CLKCPU (archimedes_top).
 
- Memory: all in the SDRAM (archie_sdram): the RAM 4 MB (bank 0), the RISC OS ROM (bank 1, the FL item
- RISC OS: archie_loader writes it while the machine is held in reset), the frame buffer (bank 2).
+ Memory: the RAM 4 MB in the SRAM (archie_sram, bank 0 of the wishbone bus, on clk_sys); the RISC OS
+ ROM (bank 1, the FL item RISC OS: archie_loader writes it while the machine is held in reset) and the
+ frame buffer (bank 2) in the SDRAM (archie_sdram): the frame buffer shares the SDRAM with the reads
+ of the ROM only.
 
  Video: the VIDC (whatever mode RISC OS sets) into the frame buffer (archie_fb), out as 800 x 600 at
  60 Hz with the OSD.
@@ -126,11 +128,6 @@ assign UART_RX = 1'bz;
 assign UART_TX = 1'bz;
 assign UART_CTS = 1'bz;
 
-// the SRAM is not used: outputs off
-assign MA = 21'd0;
-assign MD = 16'bz;
-assign MWR_N = 2'b11;
-assign MRD_N = 2'b11;
 
 assign ADC_CLK = 1'b0;
 assign ADC_BCK = 1'bz;
@@ -589,7 +586,7 @@ archie_kbd #(.CLK_HZ(40000000)) u_kbd (
 	.mouse_enabled(kbd_mouse)
 );
 
-// ------------------------------------------------------------------ SDRAM
+// ------------------------------------------------------------------ memory
 
 // the wishbone bus: the ROM loader while the machine is in reset, else MEMC
 wire wb_cyc = machine_reset ? ld_cyc : m_cyc;
@@ -599,6 +596,29 @@ wire [3:0] wb_sel = machine_reset ? ld_sel : m_sel;
 wire [23:2] wb_adr = machine_reset ? ld_adr : m_adr;
 wire [31:0] wb_dout = machine_reset ? ld_dat : m_dout;
 assign ld_ack = wb_ack & machine_reset;
+
+// bank 0 (the RAM) in the SRAM, the ROM in the SDRAM
+wire ram_sel = wb_adr[23:22] == 2'b00;
+wire [31:0] sram_din, sdram_din;
+wire sram_ack, sdram_ack;
+assign wb_din = ram_sel ? sram_din : sdram_din;
+assign wb_ack = ram_sel ? sram_ack : sdram_ack;
+
+archie_sram sram (
+	.clk(clk_sys),
+	.wb_cyc(wb_cyc & ram_sel),
+	.wb_stb(wb_stb & ram_sel),
+	.wb_we(wb_we),
+	.wb_sel(wb_sel),
+	.wb_adr(wb_adr[21:2]),
+	.wb_dat_i(wb_dout),
+	.wb_dat_o(sram_din),
+	.wb_ack(sram_ack),
+	.MA(MA),
+	.MD(MD),
+	.MWR_N(MWR_N),
+	.MRD_N(MRD_N)
+);
 
 wire fbw_req, fbr_req, fbw_buf, fbr_buf, fbw_busy, fbr_busy, fbr_we;
 wire [11:0] fbw_row, fbr_row;
@@ -610,14 +630,14 @@ archie_sdram sdram (
 	.wb_clk(clk_sys),
 	.reset(mem_reset_m),
 	.ready(sdr_ready),
-	.wb_cyc(wb_cyc),
-	.wb_stb(wb_stb),
+	.wb_cyc(wb_cyc & ~ram_sel),
+	.wb_stb(wb_stb & ~ram_sel),
 	.wb_we(wb_we),
 	.wb_sel(wb_sel),
 	.wb_adr(wb_adr),
 	.wb_dat_i(wb_dout),
-	.wb_dat_o(wb_din),
-	.wb_ack(wb_ack),
+	.wb_dat_o(sdram_din),
+	.wb_ack(sdram_ack),
 	.fbw_req(fbw_req),
 	.fbw_row(fbw_row),
 	.fbw_len(fbw_len),
