@@ -70,7 +70,9 @@ for z in range(nz):
     if z == 0: dm.append([0, 32 + 480, 32 + zone_size])
     else: dm.append([z * zone_size - 480, 32, 32 + zone_size])
 dm[-1][2] = 32 + total_bits - ((nz - 1) * zone_size - 480)
-if zones[0][4:64] != bb[0x1C0:0x1C0 + 60]: err("disc record of zone 0 differs from the boot block")
+# FileCore bumps the disc id (bytes 20, 21) of the map copy on each write, not that of the boot block
+if zones[0][4:24] + zones[0][26:64] != bb[0x1C0:0x1C0 + 20] + bb[0x1C0 + 22:0x1C0 + 60]:
+    err("disc record of zone 0 differs from the boot block")
 cross = 0
 free = 0
 frags = {}
@@ -103,7 +105,7 @@ else:
     z, blk, n = frags[rid][0]
     ra = (blk << l2bpmb) + ((root & 0xff) - 1) * sec
     d = img[ra:ra + 2048]
-    if d[1:5] != b'Hugo' or d[2048 - 5:2048 - 1] != b'Hugo': err("root at 0x%X is not a 'Hugo' directory" % ra)
+    if d[1:5] not in (b'Hugo', b'Nick') or d[2048 - 5:2048 - 1] != d[1:5]: err("root at 0x%X is not a 'Hugo' directory" % ra)
     elif dir_check(bytearray(d)) != d[2047]: err("root dir check %02x, stored %02x" % (dir_check(bytearray(d)), d[2047]))
     else: print("root directory at 0x%X ok" % ra)
     # the map copies at the start of the fragment
