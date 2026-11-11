@@ -4,7 +4,7 @@
 
 Acorn Archimedes (A3xx / A4xx / A3000: ARM2, MEMC, VIDC, IOC, 4 MB) for the Karabas Go board family. A port of [Archie_MiSTer](https://github.com/MiSTer-devel/Archie_MiSTer) (the MiSTer port of Stephen J. Leary's Archie core for MiST) to the Xilinx Spartan-6 XC6SLX25.
 
-Status: work in progress (see `docs/PLAN.md`, in Russian). Mini G: RISC OS 3.11 desktop, keyboard, mouse, sound, floppies, CMOS / clock and the IDE hard disc work on the board; Go and Mini come later.
+Status: work in progress (see `docs/PLAN.md`, in Russian). Mini G: RISC OS 3.11 desktop, keyboard, mouse, sound, floppies, CMOS / clock and the IDE hard disc work on the board. Go (VGA) and Mini (HDMI) builds are in `archie.kg` too, not yet run on a board.
 
 RISC OS is not included: put your own RISC OS 3.11 image on the SD card as `/archie/riscos.rom`.
 

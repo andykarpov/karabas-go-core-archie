@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 An Acorn Archimedes core (A3xx / A4xx / A3000: ARM2, MEMC1a, VIDC1, IOC, 4 MB, RISC OS 3.11) for the Karabas Go, Mini and Mini G boards (Xilinx Spartan-6 XC6SLX25, ISE 14.7, XST): a port of the rtl of [Archie_MiSTer](https://github.com/MiSTer-devel/Archie_MiSTer) (the MiSTer port of Stephen J. Leary's Archie core of MiST).
 
-Status: phases 0-4 done (Mini G: desktop, floppies, CMOS, IDE hard disc on hdf_ata), next phase 5 (Go / Mini tops, release). Docs, in Russian: `docs/PLAN.md` (research, decisions, phases). Follow the phases; record a changed decision in PLAN.md.
+Status: phases 0-5 done (Mini G hw ok: desktop, floppies, CMOS, IDE hard disc on hdf_ata; Go / Mini tops built, not run on a board). Later: Go physical floppy, mode 23, 50 Hz output. Docs, in Russian: `docs/PLAN.md` (research, decisions, phases). Follow the phases; record a changed decision in PLAN.md.
 
 User decisions (2026-11-10): name `archie` (`archie.kg`, `/archie`), public repo, **video through a frame buffer** (one fixed output mode), RISC OS is a user file (no ROM in the repo or the `.kg`). All file work goes through the firmware (OSD, `FL` / `F` items, `img_sdc`): no loader or soft CPU in the core.
 
