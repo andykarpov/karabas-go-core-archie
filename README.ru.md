@@ -4,7 +4,7 @@
 
 Acorn Archimedes (A3xx / A4xx / A3000: ARM2, MEMC, VIDC, IOC, 4 МБ) для плат Karabas Go. Порт [Archie_MiSTer](https://github.com/MiSTer-devel/Archie_MiSTer) (порт ядра Archie Stephen J. Leary с MiST) на Xilinx Spartan-6 XC6SLX25.
 
-Состояние: в работе (план — `docs/PLAN.md`). Mini G: рабочий стол RISC OS 3.11, клавиатура, мышь, звук, дискеты, CMOS / часы и жёсткий диск IDE работают на плате; Go и Mini позже.
+Состояние: в работе (план — `docs/PLAN.md`). Mini G: рабочий стол RISC OS 3.11, клавиатура, мышь, звук, дискеты, CMOS / часы и жёсткий диск IDE работают на плате. Сборки Go (VGA) и Mini (HDMI) тоже в `archie.kg`, на платах пока не запускались.
 
 RISC OS в ядро не входит: положите свой образ RISC OS 3.11 на SD-карту как `/archie/riscos.rom`.
 
