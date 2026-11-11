@@ -74,7 +74,6 @@ module archimedes_top #(parameter CLKCPU = 42000000) // karabas: a default (XST,
 	output         I2C_CLOCK,
 
 	output         fdd_led,
-	output         hdd_led,
 
 	// floppy connections to external controller
 	input    [1:0] img_mounted, // signaling that new image has been mounted
@@ -89,13 +88,13 @@ module archimedes_top #(parameter CLKCPU = 42000000) // karabas: a default (XST,
 	output  [15:0] sd_buff_din,
 	input          sd_buff_wr,
 
-	// connection to the IDE controller
-	output   [5:0] ide_req,
-	input    [4:0] ide_address,
-	input          ide_write,
-	input   [15:0] ide_writedata,
-	input          ide_read,
-	output  [15:0] ide_readdata,
+	// karabas: the IDE bus of the podule (podule_ide), for hdf_ata in the board top (it has the led)
+	output   [2:0] ide_a,
+	output         ide_cs,
+	output         ide_rd,
+	output         ide_wr,
+	output  [15:0] ide_wdata,
+	input   [15:0] ide_rdata,
 
 	// connection to keyboard controller
 	output   [7:0] KBD_OUT_DATA,
@@ -419,14 +418,12 @@ podule_ide IDE (
 	.cpu_dat_o      ( podule0_rdata    ),
 	.cpu_dat_i      ( podule_wdata     ),
 
-	.hdd_led        ( hdd_led          ),
-
-	.ide_req        ( ide_req          ),
-	.ide_address    ( ide_address      ),
-	.ide_write      ( ide_write        ),
-	.ide_writedata  ( ide_writedata    ),
-	.ide_read       ( ide_read         ),
-	.ide_readdata   ( ide_readdata     )
+	.ide_a          ( ide_a            ),
+	.ide_cs         ( ide_cs           ),
+	.ide_rd         ( ide_rd           ),
+	.ide_wr         ( ide_wr           ),
+	.ide_wdata      ( ide_wdata        ),
+	.ide_rdata      ( ide_rdata        )
 );
 
 wire [7:0] latches_dat_o;

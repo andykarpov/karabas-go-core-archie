@@ -243,7 +243,7 @@ kg_mcu #(
 	.ENABLE_UART(0),
 	.ENABLE_MATRIX(0),
 	.ENABLE_DEBUG(1),    // the state of the machine (AT+KARABAS=debug:1, kg_board.py log)
-	.ENABLE_IMG(1),      // the floppies (img_sdc, archie_fdd)
+	.ENABLE_IMG(1),      // the floppies and hard discs (img_sdc, archie_fdd, hdf_ata)
 	.ENABLE_IMG_WP(1),
 	.ENABLE_MIDI(0),
 	.ENABLE_FILE(1),
@@ -455,8 +455,10 @@ end
 
 // ------------------------------------------------------------------ floppies
 
-// img_sdc (the file mounter of the mcu: slots 0 / 1 = Floppy A / B) and archie_fdd (its bytes to the
-// 16-bit buffer of fdc1772, OUT_LATENCY 3)
+// img_sdc (the file mounter of the mcu: slots 0 / 1 = Floppy A / B, 4 / 5 = Hard disc 0 / 1),
+// archie_fdd (its bytes to the 16-bit buffer of fdc1772, OUT_LATENCY 3) and hdf_ata (the ATA discs of
+// the IDE podule). img_sdc serves the lowest slot first and latches sdc_sector with it: the sector of
+// the floppies while they ask, else that of the discs
 wire [7:0] sdc_img_mounted;
 wire [63:0] sdc_img_size;
 wire sdc_busy, sdc_done, sdc_error, sdc_byte_in_strobe;
@@ -469,6 +471,13 @@ wire [31:0] fdd_img_size, fdd_lba;
 wire fdd_img_wp, fdd_ack, fdd_buff_wr, fdd_sel;
 wire [7:0] fdd_buff_addr;
 wire [15:0] fdd_buff_dout, fdd_buff_din;
+wire [1:0] hd_rd, hd_wr;
+wire [31:0] hd_sector;
+wire [7:0] hd_byte_out;
+wire hd_sel = sdc_slot[2:1] == 2'b10;
+wire [2:0] ide_a;
+wire ide_cs, ide_rd, ide_wr, hdd_led;
+wire [15:0] ide_wdata, ide_rdata;
 
 img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd8000000)) img_sdc (
 	.clk(clk_sys),
@@ -486,9 +495,9 @@ img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd8000000)) img_sdc (
 	.img_q_ack(img_q_ack),
 	.sdc_img_mounted(sdc_img_mounted),
 	.sdc_img_size(sdc_img_size),
-	.sdc_rd({ 6'd0, fdd_rd }),
-	.sdc_wr({ 6'd0, fdd_wr }),
-	.sdc_sector(fdd_lba),
+	.sdc_rd({ 2'd0, hd_rd, 2'd0, fdd_rd }),
+	.sdc_wr({ 2'd0, hd_wr, 2'd0, fdd_wr }),
+	.sdc_sector((fdd_rd != 2'd0 || fdd_wr != 2'd0) ? fdd_lba : hd_sector),
 	.sdc_busy(sdc_busy),
 	.sdc_done(sdc_done),
 	.sdc_error(sdc_error),
@@ -496,7 +505,7 @@ img_sdc #(.OUT_LATENCY(3), .TIMEOUT(24'd8000000)) img_sdc (
 	.sdc_byte_in_strobe(sdc_byte_in_strobe),
 	.sdc_byte_addr(sdc_byte_addr),
 	.sdc_byte_in_data(sdc_byte_in_data),
-	.sdc_byte_out_data(sdc_byte_out_data),
+	.sdc_byte_out_data(hd_sel ? hd_byte_out : sdc_byte_out_data),
 	.active(img_active)
 );
 
@@ -520,6 +529,32 @@ archie_fdd fdd (
 	.sd_buff_dout(fdd_buff_dout),
 	.sd_buff_wr(fdd_buff_wr),
 	.sd_buff_din(fdd_buff_din)
+);
+
+// the discs of the IDE podule: device 0 (slot 4) and 1 (slot 5)
+archie_ide ide (
+	.clk(clk_sys),
+	.reset(areset),
+	.ata_reset(machine_reset),
+	.ide_a(ide_a),
+	.ide_cs(ide_cs),
+	.ide_rd(ide_rd),
+	.ide_wr(ide_wr),
+	.ide_wdata(ide_wdata),
+	.ide_rdata(ide_rdata),
+	.img_mounted(sdc_img_mounted[5:4]),
+	.img_size(sdc_img_size),
+	.sdc_rd(hd_rd),
+	.sdc_wr(hd_wr),
+	.sdc_sector(hd_sector),
+	.sdc_busy(sdc_busy && hd_sel),
+	.sdc_done(sdc_done && hd_sel),
+	.sdc_error(sdc_error && hd_sel),
+	.sdc_byte_in_strobe(sdc_byte_in_strobe && hd_sel),
+	.sdc_byte_addr(sdc_byte_addr),
+	.sdc_byte_in_data(sdc_byte_in_data),
+	.sdc_byte_out_data(hd_byte_out),
+	.led(hdd_led)
 );
 
 // ------------------------------------------------------------------ the machine
@@ -580,7 +615,6 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.I2C_DIN(i2c_din),
 	.I2C_CLOCK(i2c_clock),
 	.fdd_led(fdd_led),
-	.hdd_led(),
 	.img_mounted(fdd_img_mounted),
 	.img_wp(fdd_img_wp),
 	.img_size(fdd_img_size),
@@ -592,12 +626,12 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.sd_buff_dout(fdd_buff_dout),
 	.sd_buff_din(fdd_buff_din),
 	.sd_buff_wr(fdd_buff_wr),
-	.ide_req(),
-	.ide_address(5'd0),
-	.ide_write(1'b0),
-	.ide_writedata(16'd0),
-	.ide_read(1'b0),
-	.ide_readdata(),
+	.ide_a(ide_a),
+	.ide_cs(ide_cs),
+	.ide_rd(ide_rd),
+	.ide_wr(ide_wr),
+	.ide_wdata(ide_wdata),
+	.ide_rdata(ide_rdata),
 	.KBD_OUT_DATA(kbd_out_data),
 	.KBD_OUT_STROBE(kbd_out_strobe),
 	.KBD_IN_DATA(kbd_in_data),

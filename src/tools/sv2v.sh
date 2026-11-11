@@ -13,7 +13,7 @@ SRC="amber/a23_alu.v amber/a23_barrel_shift.v amber/a23_barrel_shift_fpga.v ambe
  archimedes_top.v memc.v memc_translator.v ioc.v ioc_irq.v latches.v
  vidc/vidc.v vidc/vidc_async_fifo.v vidc/vidc_audio.v vidc/vidc_command_fifo.v vidc/vidc_dmachannel.v
  vidc/vidc_fifo.v vidc/vidc_timing.v vidc/mode23_cursor_serializer.v
- fdc/fdc1772.sv fdc/floppy.v podule_ide.sv ide.v EEPROM_24C0x.sv"
+ fdc/fdc1772.sv fdc/floppy.v podule_ide.sv EEPROM_24C0x.sv"
 rm -rf sv2v && mkdir sv2v
 $SV2V -I amber --top=archimedes_top --top=EEPROM_24C0x $SRC -w sv2v 2>&1 | grep -v -E '^\s*$|Warning: Number literal|^ *[0-9]* \||^\s*\|' || true
 ls sv2v | wc -l

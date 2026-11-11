@@ -1,7 +1,7 @@
 {
     "id": "archie",
     "name": "Acorn Archimedes",
-    "build": "26111001",
+    "build": "26111101",
     "visible": true,
     "type": "osd",
     "order": 20,
@@ -49,6 +49,22 @@
             "extensions": ".adf",
             "dir": "/archie",
             "hotkey": "Menu+F2"
+        },
+        {
+            "type": "F",
+            "name": "Hard disc 0",
+            "slot": 4,
+            "extensions": ".hdf",
+            "dir": "/archie",
+            "hotkey": "Menu+F3"
+        },
+        {
+            "type": "F",
+            "name": "Hard disc 1",
+            "slot": 5,
+            "extensions": ".hdf",
+            "dir": "/archie",
+            "hotkey": "Menu+F4"
         }
     ],
     "eeprom_init": "cmos.bin"
