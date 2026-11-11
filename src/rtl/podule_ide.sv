@@ -42,7 +42,10 @@ module podule_ide (
 
 // RISC Developments IDE Interface in Podule 0
 reg [7:0] rd_rom[16384];
-initial $readmemh("rtl/riscdevide_rom.hex", rd_rom);
+// karabas: XST misreads the srecord file (a comment, "@addr" lines of 23 bytes: "constant value is
+// truncated", half the ROM lost, the podule seen as "Simple podule &5", no IDEFS): the same bytes one
+// per line (rtl/karabas/riscdevide_rom.hex, from rtl/riscdevide_rom.hex)
+initial $readmemh("rtl/karabas/riscdevide_rom.hex", rd_rom);
 
 wire reg_sel  = cpu_sel && cpu_adr[13:10] == 4'hA;
 wire page_sel = cpu_sel && cpu_adr[13:02] == 12'h800 && cpu_we ;

@@ -27,7 +27,7 @@ module podule_ide (
 	output wire [15:0] ide_wdata;
 	input [15:0] ide_rdata;
 	reg [7:0] rd_rom [0:16383];
-	initial $readmemh("rtl/riscdevide_rom.hex", rd_rom);
+	initial $readmemh("rtl/karabas/riscdevide_rom.hex", rd_rom);
 	wire reg_sel = cpu_sel && (cpu_adr[13:10] == 4'ha);
 	wire page_sel = (cpu_sel && (cpu_adr[13:2] == 12'h800)) && cpu_we;
 	reg [2:0] rd_page;
