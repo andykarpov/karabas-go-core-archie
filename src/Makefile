@@ -37,7 +37,7 @@ MAP = -logic_opt off -ol high -xe n -xt 3 -register_duplication off -r 4 -global
 PAR = -ol high -xe c -mt 4
 
 # included or read by the sources, not in the prj
-INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh) rtl/riscdevide_rom.hex
+INCLUDES = $(wildcard ../modules/rtl/mcu/*.vh) rtl/karabas/riscdevide_rom.hex
 
 
 .PHONY: all clean $(BOARDS) $(BOARDS:=-xst) $(BOARDS:=-impl) $(BOARDS:=-core) $(BOARDS:=-report) archie-xst archie-report

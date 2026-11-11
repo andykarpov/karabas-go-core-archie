@@ -34,7 +34,6 @@ module archimedes_top (
 	I2C_DIN,
 	I2C_CLOCK,
 	fdd_led,
-	hdd_led,
 	img_mounted,
 	img_wp,
 	img_size,
@@ -46,12 +45,12 @@ module archimedes_top (
 	sd_buff_dout,
 	sd_buff_din,
 	sd_buff_wr,
-	ide_req,
-	ide_address,
-	ide_write,
-	ide_writedata,
-	ide_read,
-	ide_readdata,
+	ide_a,
+	ide_cs,
+	ide_rd,
+	ide_wr,
+	ide_wdata,
+	ide_rdata,
 	KBD_OUT_DATA,
 	KBD_OUT_STROBE,
 	KBD_IN_DATA,
@@ -97,7 +96,6 @@ module archimedes_top (
 	input I2C_DIN;
 	output wire I2C_CLOCK;
 	output wire fdd_led;
-	output wire hdd_led;
 	input [1:0] img_mounted;
 	input img_wp;
 	input [31:0] img_size;
@@ -109,12 +107,12 @@ module archimedes_top (
 	input [15:0] sd_buff_dout;
 	output wire [15:0] sd_buff_din;
 	input sd_buff_wr;
-	output wire [5:0] ide_req;
-	input [4:0] ide_address;
-	input ide_write;
-	input [15:0] ide_writedata;
-	input ide_read;
-	output wire [15:0] ide_readdata;
+	output wire [2:0] ide_a;
+	output wire ide_cs;
+	output wire ide_rd;
+	output wire ide_wr;
+	output wire [15:0] ide_wdata;
+	input [15:0] ide_rdata;
 	output wire [7:0] KBD_OUT_DATA;
 	output wire KBD_OUT_STROBE;
 	input [7:0] KBD_IN_DATA;
@@ -348,13 +346,12 @@ module archimedes_top (
 		.cpu_adr(podule_adr),
 		.cpu_dat_o(podule0_rdata),
 		.cpu_dat_i(podule_wdata),
-		.hdd_led(hdd_led),
-		.ide_req(ide_req),
-		.ide_address(ide_address),
-		.ide_write(ide_write),
-		.ide_writedata(ide_writedata),
-		.ide_read(ide_read),
-		.ide_readdata(ide_readdata)
+		.ide_a(ide_a),
+		.ide_cs(ide_cs),
+		.ide_rd(ide_rd),
+		.ide_wr(ide_wr),
+		.ide_wdata(ide_wdata),
+		.ide_rdata(ide_rdata)
 	);
 	wire [7:0] latches_dat_o;
 	wire latches_en = (ioc_cs & ioc_select[5]) & (ioc_speed == 2'd2);

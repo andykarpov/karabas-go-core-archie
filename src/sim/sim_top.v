@@ -129,6 +129,29 @@ archie_ce #(.CLK_HZ(40000000)) u_ce (
 	.clk(clk), .reset(reset), .baseclk(baseclk), .selpix(selpix), .ce_pix(ce_pix), .ce_aud(ce_aud)
 );
 
+// the IDE podule: archie_ide (hdf_ata) as on the boards, device 0 on the image of +hdf=FILE
+wire [2:0] ide_a;
+wire ide_cs, ide_rd, ide_wr;
+wire [15:0] ide_wdata, ide_rdata;
+wire hd_mnt, hd_busy, hd_done, hd_err, hd_strobe;
+wire [63:0] hd_size;
+wire [1:0] hd_rd, hd_wr;
+wire [31:0] hd_sector;
+wire [8:0] hd_baddr;
+wire [7:0] hd_bin, hd_bout;
+archie_ide ide (
+	.clk(clk), .reset(1'b0), .ata_reset(reset),
+	.ide_a(ide_a), .ide_cs(ide_cs), .ide_rd(ide_rd), .ide_wr(ide_wr), .ide_wdata(ide_wdata), .ide_rdata(ide_rdata),
+	.img_mounted({ 1'b0, hd_mnt }), .img_size(hd_size), .sdc_rd(hd_rd), .sdc_wr(hd_wr), .sdc_sector(hd_sector),
+	.sdc_busy(hd_busy), .sdc_done(hd_done), .sdc_error(hd_err), .sdc_byte_in_strobe(hd_strobe),
+	.sdc_byte_addr(hd_baddr), .sdc_byte_in_data(hd_bin), .sdc_byte_out_data(hd_bout), .led()
+);
+sdc_file_model #(.MOUNT_AT(4000)) hdf (
+	.clk(clk), .img_mounted(hd_mnt), .img_size(hd_size), .sdc_rd(hd_rd[0]), .sdc_wr(hd_wr[0]), .sdc_sector(hd_sector),
+	.sdc_busy(hd_busy), .sdc_done(hd_done), .sdc_error(hd_err), .sdc_byte_in_strobe(hd_strobe),
+	.sdc_byte_addr(hd_baddr), .sdc_byte_in_data(hd_bin), .sdc_byte_out_data(hd_bout)
+);
+
 archimedes_top #(.CLKCPU(40000000)) archie (
 	.CLKCPU_I(clk),
 	.CLKPIX_I(clk),
@@ -165,7 +188,6 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.I2C_DIN(i2c_din),
 	.I2C_CLOCK(i2c_clock),
 	.fdd_led(fdd_led),
-	.hdd_led(),
 	.img_mounted(2'b00),
 	.img_wp(1'b0),
 	.img_size(32'd0),
@@ -177,12 +199,12 @@ archimedes_top #(.CLKCPU(40000000)) archie (
 	.sd_buff_dout(16'd0),
 	.sd_buff_din(),
 	.sd_buff_wr(1'b0),
-	.ide_req(),
-	.ide_address(5'd0),
-	.ide_write(1'b0),
-	.ide_writedata(16'd0),
-	.ide_read(1'b0),
-	.ide_readdata(),
+	.ide_a(ide_a),
+	.ide_cs(ide_cs),
+	.ide_rd(ide_rd),
+	.ide_wr(ide_wr),
+	.ide_wdata(ide_wdata),
+	.ide_rdata(ide_rdata),
 	.KBD_OUT_DATA(kbd_out_data),
 	.KBD_OUT_STROBE(kbd_out_strobe),
 	.KBD_IN_DATA(kbd_in_data),

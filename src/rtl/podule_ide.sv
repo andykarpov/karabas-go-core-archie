@@ -28,20 +28,24 @@ module podule_ide (
 	input  [15:0] cpu_dat_i,
 	output [15:0] cpu_dat_o,
 
-	output        hdd_led,
-
-	// place any signals that need to be passed up to the top after here.
-	output  [5:0] ide_req,
-	input   [4:0] ide_address,
-	input         ide_write,
-	input  [15:0] ide_writedata,
-	input         ide_read,
-	output [15:0] ide_readdata
+	// karabas: the IDE bus of the podule goes out to hdf_ata of karabas-go-modules (an ATA disk on an
+	// image of the mcu, in the board top); the ide of MiSTer needs the HPS to run the ATA commands.
+	// A register access lasts the whole CPU cycle: hdf_ata answers a clock after the address and
+	// takes the end of the strobe (as the ide of MiSTer did, the read data a clock after io_read)
+	output  [2:0] ide_a,
+	output        ide_cs,
+	output        ide_rd,
+	output        ide_wr,
+	output [15:0] ide_wdata,
+	input  [15:0] ide_rdata
 );
 
 // RISC Developments IDE Interface in Podule 0
 reg [7:0] rd_rom[16384];
-initial $readmemh("rtl/riscdevide_rom.hex", rd_rom);
+// karabas: XST misreads the srecord file (a comment, "@addr" lines of 23 bytes: "constant value is
+// truncated", half the ROM lost, the podule seen as "Simple podule &5", no IDEFS): the same bytes one
+// per line (rtl/karabas/riscdevide_rom.hex, from rtl/riscdevide_rom.hex)
+initial $readmemh("rtl/karabas/riscdevide_rom.hex", rd_rom);
 
 wire reg_sel  = cpu_sel && cpu_adr[13:10] == 4'hA;
 wire page_sel = cpu_sel && cpu_adr[13:02] == 12'h800 && cpu_we ;
@@ -56,32 +60,14 @@ reg [7:0] rd_rom_q;
 always @(posedge clk) rd_rom_q <= rd_rom[{rd_page, cpu_adr[12:2]}];
 
 wire [2:0]  ide_reg = cpu_adr[4:2];
-wire [15:0] data_out;
+wire [15:0] data_out = ide_rdata;
 
 assign cpu_dat_o = ~reg_sel ? {8'd0, rd_rom_q} : ((!ide_reg) ? data_out : { data_out[7:0], data_out[7:0] });
-assign ide_req[5:3] = 0;
 
-ide ide
-(
-	.clk(clk),
-	.rst_n(~reset),
-
-	.drq(hdd_led),
-	.use_fast(0),
-	.io_32(0),
-
-	.io_address(ide_reg),
-	.io_read(~cpu_we & reg_sel),
-	.io_readdata(data_out),
-	.io_write(cpu_we & reg_sel),
-	.io_writedata(cpu_dat_i),
-
-	.request(ide_req[2:0]),
-	.mgmt_address(ide_address[3:0]),
-	.mgmt_write(~ide_address[4] & ide_write),
-	.mgmt_writedata(ide_writedata),
-	.mgmt_read(~ide_address[4] & ide_read),
-	.mgmt_readdata(ide_readdata)
-);
+assign ide_a     = ide_reg;
+assign ide_cs    = reg_sel;
+assign ide_rd    = ~cpu_we & reg_sel;
+assign ide_wr    = cpu_we & reg_sel;
+assign ide_wdata = cpu_dat_i;
 
 endmodule
