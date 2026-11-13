@@ -9,9 +9,13 @@
     "rtc_mode": 0,
     "boards": {
         "go": {
+            "link": 2,
+            "build": "26111326",
             "bitstream": "karabas_go.bin"
         },
         "mini": {
+            "link": 2,
+            "build": "26111326",
             "bitstream": "karabas_mini.bin"
         },
         "minig": {
