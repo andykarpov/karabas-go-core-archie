@@ -36,11 +36,6 @@
             "hotkey": "Menu+R"
         },
         {
-            "type": "T",
-            "name": "Reset",
-            "hotkey": "Menu+F12"
-        },
-        {
             "type": "F",
             "name": "Floppy A",
             "slot": 0,
@@ -71,6 +66,12 @@
             "extensions": ".hdf",
             "dir": "/archie",
             "hotkey": "Menu+F4"
+        },
+        {
+            "type": "T",
+            "index": 1,
+            "name": "Reset",
+            "hotkey": "Menu+F12"
         }
     ],
     "eeprom_init": "cmos.bin"
