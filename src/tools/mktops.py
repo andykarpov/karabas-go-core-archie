@@ -103,7 +103,7 @@ g = sub(g, "wire locked, lockedx5, areset;\nwire clk_hdmi, clk_hdmi_n;", "wire l
 g = sub(g, PLL_G, PLL_MIDI, "go pll")
 i = g.index("kg_dcm #(\n\t.CLKIN_PERIOD(25.0),")
 j = g.index(pll_end) + len(pll_end)
-g = g[:i] + "// the pixel clock of the VGA DAC\nODDR2 oddr_v_clk (.Q(V_CLK), .C0(clk_sys), .C1(~clk_sys), .CE(1'b1), .D0(1'b1), .D1(1'b0), .R(1'b0), .S(1'b0));" + MIDI_ODDR + g[j:]
+g = g[:i] + "// the pixel clock of the VGA DAC, inverted: the DAC takes the pixel on the rising V_CLK, the middle of the pixel\nODDR2 oddr_v_clk (.Q(V_CLK), .C0(clk_sys), .C1(~clk_sys), .CE(1'b1), .D0(1'b0), .D1(1'b1), .R(1'b0), .S(1'b0));" + MIDI_ODDR + g[j:]
 g = sub(g, MCU_SCK_G, MCU_SCK_OLD, "go mcu_sck")
 g = sub(g, """assign MCU_IO[1] = mcu_int;
 assign MCU_IO[0] = 1'bz;
